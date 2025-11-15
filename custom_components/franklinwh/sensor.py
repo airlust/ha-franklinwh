@@ -46,6 +46,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda stats: stats.current.solar_production if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
@@ -54,6 +55,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda stats: stats.current.battery_use if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
@@ -62,6 +64,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda stats: stats.current.grid_use if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
@@ -70,6 +73,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda stats: stats.current.home_load if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
@@ -78,6 +82,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda stats: stats.current.generator_production if stats.current else None,
         exists_fn=lambda stats: stats.current and stats.current.generator_production is not None and stats.current.generator_production > 0,
     ),
