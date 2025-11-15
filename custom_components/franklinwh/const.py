@@ -18,10 +18,10 @@ ATTR_LOAD_POWER: Final = "load_power"
 ATTR_BATTERY_POWER: Final = "battery_power"
 ATTR_GRID_STATUS: Final = "grid_status"
 
-# Operating Modes
+# Operating Modes (must match franklinwh library constants)
 MODE_TIME_OF_USE: Final = "time_of_use"
 MODE_SELF_CONSUMPTION: Final = "self_consumption"
-MODE_BACKUP: Final = "backup"
+MODE_BACKUP: Final = "emergency_backup"
 
 MODES: Final = {
     MODE_TIME_OF_USE: "Time of Use",

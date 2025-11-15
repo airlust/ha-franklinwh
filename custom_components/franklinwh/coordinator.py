@@ -41,12 +41,20 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self._token_fetcher = TokenFetcher(email, password)
         # Client expects TokenFetcher object and handles token refresh automatically
         self._client = Client(self._token_fetcher, self.gateway_id)
+        self.current_mode: str | None = None
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH."""
         # Fetch stats - Client handles token refresh automatically
         try:
             stats = await self.hass.async_add_executor_job(self._client.get_stats)
+            # Also fetch current mode (doesn't fail the update if it errors)
+            try:
+                mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
+                if mode_data:
+                    self.current_mode = mode_data[0]
+            except Exception as mode_err:
+                _LOGGER.warning("Failed to fetch current mode: %s", mode_err)
             return stats
         except DeviceTimeoutException as err:
             raise UpdateFailed(f"Device timeout: {err}") from err
@@ -62,7 +70,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             await self.hass.async_add_executor_job(
                 self._client.set_mode, mode
             )
-            # Request immediate refresh
+            # Request immediate refresh to get updated data
             await self.async_request_refresh()
         except Exception as err:
             _LOGGER.exception("Failed to set mode")

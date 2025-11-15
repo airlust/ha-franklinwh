@@ -60,14 +60,7 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
     @property
     def current_option(self) -> str | None:
         """Return the current operating mode."""
-        if not self.coordinator.data or not self.coordinator.data.current:
-            return None
-
-        # Try to determine current mode from stats
-        # This is a best-effort approach since the API might not directly expose the mode
-        # We'll need to add this to the Stats data if available
-        # For now, return None and the user can select a mode
-        return None
+        return self.coordinator.current_mode
 
     async def async_select_option(self, option: str) -> None:
         """Change the operating mode."""
