@@ -39,7 +39,7 @@ This custom integration allows you to monitor and control your FranklinWH Whole 
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add the URL: `https://github.com/benwh/ha-franklinwh`
+5. Add the URL: `https://github.com/airlust/ha-franklinwh`
 6. Select category: "Integration"
 7. Click "Add"
 8. Find "FranklinWH Energy Storage" in HACS and click "Download"
@@ -146,4 +146,4 @@ This project is licensed under the MIT License.
 
 ## Support
 
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/benwh/ha-franklinwh/issues).
+For issues and feature requests, please use the [GitHub issue tracker](https://github.com/airlust/ha-franklinwh/issues).
