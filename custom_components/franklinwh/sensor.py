@@ -39,12 +39,12 @@ class FranklinWHSensorEntityDescription(SensorEntityDescription):
 
 
 SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
-    # Current Power Sensors
+    # Current Power Sensors (API returns values in kilowatts)
     FranklinWHSensorEntityDescription(
         key="solar_power",
         name="Solar Power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda stats: stats.current.solar_production if stats.current else None,
     ),
@@ -52,7 +52,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         key="battery_power",
         name="Battery Power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda stats: stats.current.battery_use if stats.current else None,
     ),
@@ -60,7 +60,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         key="grid_power",
         name="Grid Power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda stats: stats.current.grid_use if stats.current else None,
     ),
@@ -68,7 +68,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         key="load_power",
         name="Load Power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda stats: stats.current.home_load if stats.current else None,
     ),
@@ -76,7 +76,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         key="generator_power",
         name="Generator Power",
         device_class=SensorDeviceClass.POWER,
-        native_unit_of_measurement=UnitOfPower.WATT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda stats: stats.current.generator_production if stats.current else None,
         exists_fn=lambda stats: stats.current and stats.current.generator_production is not None and stats.current.generator_production > 0,
