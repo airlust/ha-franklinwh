@@ -1,0 +1,12 @@
+{
+  "domain": "franklinwh",
+  "name": "FranklinWH Energy Storage",
+  "codeowners": ["@benwh"],
+  "config_flow": true,
+  "documentation": "https://github.com/benwh/ha-franklinwh",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/benwh/ha-franklinwh/issues",
+  "requirements": ["franklinwh>=0.4.1"],
+  "version": "0.1.0"
+}

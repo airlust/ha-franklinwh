@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FranklinWH Energy Storage",
+        "description": "Enter your FranklinWH credentials to connect to your energy storage system.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "gateway_id": "Gateway ID (SN from app)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to FranklinWH. Please check your internet connection and try again.",
+      "invalid_auth": "Invalid email or password. Please check your credentials.",
+      "account_locked": "Your account has been locked. Please contact FranklinWH support.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This FranklinWH gateway is already configured."
+    }
+  }
+}
