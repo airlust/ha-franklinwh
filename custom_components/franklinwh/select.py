@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 MODE_MAP = {
     MODE_TIME_OF_USE: Mode.time_of_use,
     MODE_SELF_CONSUMPTION: Mode.self_consumption,
-    MODE_BACKUP: Mode.backup,
+    MODE_BACKUP: Mode.emergency_backup,
 }
 
 
@@ -76,9 +76,9 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
             return
 
         mode_constructor = MODE_MAP[option]
-        # Create mode with default SOC of 100%
-        # Users can customize this by creating additional number entities if needed
-        mode = mode_constructor(100)
+        # Create mode with library default SOC values
+        # time_of_use and self_consumption default to 20%, emergency_backup to 100%
+        mode = mode_constructor()
 
         try:
             await self.coordinator.async_set_mode(mode)
