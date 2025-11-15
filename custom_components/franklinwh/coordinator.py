@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for FranklinWH Energy Storage."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -16,6 +17,10 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+
+# Retry configuration for transient errors
+MAX_RETRIES = 2
+RETRY_DELAY = 3  # seconds
 
 
 class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
@@ -44,46 +49,130 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.current_mode: str | None = None
 
     async def _async_update_data(self) -> Stats:
-        """Fetch data from FranklinWH."""
-        # Fetch stats - Client handles token refresh automatically
-        try:
-            stats = await self.hass.async_add_executor_job(self._client.get_stats)
-            # Also fetch current mode (doesn't fail the update if it errors)
+        """Fetch data from FranklinWH with retry logic."""
+        last_error = None
+
+        # Retry logic for transient errors
+        for attempt in range(MAX_RETRIES + 1):
             try:
-                mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
-                if mode_data:
-                    self.current_mode = mode_data[0]
-            except Exception as mode_err:
-                _LOGGER.warning("Failed to fetch current mode: %s", mode_err)
-            return stats
-        except DeviceTimeoutException as err:
-            raise UpdateFailed(f"Device timeout: {err}") from err
-        except GatewayOfflineException as err:
-            raise UpdateFailed(f"Gateway offline: {err}") from err
-        except Exception as err:
-            _LOGGER.exception("Failed to fetch stats from gateway")
-            raise UpdateFailed(f"Failed to update data: {err}") from err
+                # Fetch stats - Client handles token refresh automatically
+                stats = await self.hass.async_add_executor_job(self._client.get_stats)
+
+                # Also fetch current mode (doesn't fail the update if it errors)
+                try:
+                    mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
+                    if mode_data:
+                        self.current_mode = mode_data[0]
+                except Exception as mode_err:
+                    _LOGGER.warning("Failed to fetch current mode: %s", mode_err)
+
+                # Success! If we retried, log success
+                if attempt > 0:
+                    _LOGGER.info("Successfully fetched data after %d retry(ies)", attempt)
+
+                return stats
+
+            except (DeviceTimeoutException, GatewayOfflineException) as err:
+                last_error = err
+
+                # If we have retries left, wait and try again
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Transient error fetching data (attempt %d/%d): %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        err,
+                        RETRY_DELAY,
+                    )
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+
+                # Out of retries, fail the update
+                _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, err)
+                raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {err}") from err
+
+            except Exception as err:
+                # Non-retryable error (auth, etc.)
+                _LOGGER.exception("Failed to fetch stats from gateway")
+                raise UpdateFailed(f"Failed to update data: {err}") from err
+
+        # Should never reach here, but just in case
+        raise UpdateFailed(f"Failed to update data: {last_error}") from last_error
 
     async def async_set_mode(self, mode: Mode) -> None:
-        """Set the operating mode."""
-        try:
-            await self.hass.async_add_executor_job(
-                self._client.set_mode, mode
-            )
-            # Request immediate refresh to get updated data
-            await self.async_request_refresh()
-        except Exception as err:
-            _LOGGER.exception("Failed to set mode")
-            raise UpdateFailed(f"Failed to set mode: {err}") from err
+        """Set the operating mode with retry logic."""
+        last_error = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                await self.hass.async_add_executor_job(
+                    self._client.set_mode, mode
+                )
+                # Success! Request immediate refresh to get updated data
+                await self.async_request_refresh()
+
+                if attempt > 0:
+                    _LOGGER.info("Successfully set mode after %d retry(ies)", attempt)
+                return
+
+            except (DeviceTimeoutException, GatewayOfflineException) as err:
+                last_error = err
+
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Timeout setting mode (attempt %d/%d): %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        err,
+                        RETRY_DELAY,
+                    )
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+
+                _LOGGER.error("Failed to set mode after %d attempts: %s", MAX_RETRIES + 1, err)
+                raise UpdateFailed(f"Failed to set mode after {MAX_RETRIES + 1} attempts: {err}") from err
+
+            except Exception as err:
+                _LOGGER.exception("Failed to set mode")
+                raise UpdateFailed(f"Failed to set mode: {err}") from err
+
+        raise UpdateFailed(f"Failed to set mode: {last_error}") from last_error
 
     async def async_set_smart_switch_state(self, switch_id: str, state: bool) -> None:
-        """Set smart switch state."""
-        try:
-            await self.hass.async_add_executor_job(
-                self._client.set_smart_switch_state, switch_id, state
-            )
-            # Request immediate refresh
-            await self.async_request_refresh()
-        except Exception as err:
-            _LOGGER.exception("Failed to set smart switch state")
-            raise UpdateFailed(f"Failed to set smart switch state: {err}") from err
+        """Set smart switch state with retry logic."""
+        last_error = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                await self.hass.async_add_executor_job(
+                    self._client.set_smart_switch_state, switch_id, state
+                )
+                # Success! Request immediate refresh
+                await self.async_request_refresh()
+
+                if attempt > 0:
+                    _LOGGER.info("Successfully set smart switch state after %d retry(ies)", attempt)
+                return
+
+            except (DeviceTimeoutException, GatewayOfflineException) as err:
+                last_error = err
+
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Timeout setting smart switch (attempt %d/%d): %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        err,
+                        RETRY_DELAY,
+                    )
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+
+                _LOGGER.error("Failed to set smart switch after %d attempts: %s", MAX_RETRIES + 1, err)
+                raise UpdateFailed(f"Failed to set smart switch after {MAX_RETRIES + 1} attempts: {err}") from err
+
+            except Exception as err:
+                _LOGGER.exception("Failed to set smart switch state")
+                raise UpdateFailed(f"Failed to set smart switch state: {err}") from err
+
+        raise UpdateFailed(f"Failed to set smart switch state: {last_error}") from last_error
