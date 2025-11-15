@@ -34,21 +34,16 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """
     token_fetcher = TokenFetcher(data[CONF_EMAIL], data[CONF_PASSWORD])
 
+    # Create client and test connection
+    # Client expects TokenFetcher object, not token string
+    client = Client(token_fetcher, data[CONF_GATEWAY_ID])
+
     try:
-        token = await hass.async_add_executor_job(token_fetcher.get_token)
+        stats = await hass.async_add_executor_job(client.get_stats)
     except InvalidCredentialsException as err:
         raise InvalidAuth from err
     except AccountLockedException as err:
         raise AccountLocked from err
-    except Exception as err:
-        _LOGGER.exception("Unexpected exception during authentication")
-        raise CannotConnect from err
-
-    # Create client and test connection
-    client = Client(token, data[CONF_GATEWAY_ID])
-
-    try:
-        stats = await hass.async_add_executor_job(client.get_stats)
     except Exception as err:
         _LOGGER.exception("Failed to fetch stats from gateway")
         raise CannotConnect from err
