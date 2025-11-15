@@ -46,7 +46,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda stats: stats.current.pv if stats.current else None,
+        value_fn=lambda stats: stats.current.solar_production if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
         key="battery_power",
@@ -54,7 +54,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda stats: stats.current.battery if stats.current else None,
+        value_fn=lambda stats: stats.current.battery_use if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
         key="grid_power",
@@ -62,7 +62,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda stats: stats.current.grid if stats.current else None,
+        value_fn=lambda stats: stats.current.grid_use if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
         key="load_power",
@@ -70,7 +70,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda stats: stats.current.load if stats.current else None,
+        value_fn=lambda stats: stats.current.home_load if stats.current else None,
     ),
     FranklinWHSensorEntityDescription(
         key="generator_power",
@@ -78,8 +78,8 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda stats: stats.current.generator if stats.current else None,
-        exists_fn=lambda stats: stats.current and stats.current.generator is not None,
+        value_fn=lambda stats: stats.current.generator_production if stats.current else None,
+        exists_fn=lambda stats: stats.current and stats.current.generator_production is not None and stats.current.generator_production > 0,
     ),
     # Battery State of Charge
     FranklinWHSensorEntityDescription(
@@ -137,7 +137,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
-        value_fn=lambda stats: stats.totals.consumption if stats.totals else None,
+        value_fn=lambda stats: stats.totals.home_use if stats.totals else None,
     ),
     # Diagnostic Sensors
     FranklinWHSensorEntityDescription(
