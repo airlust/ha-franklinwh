@@ -5,7 +5,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
-from franklinwh import Client, Stats, TokenFetcher
+from franklinwh import Client, Mode, Stats, TokenFetcher
 from franklinwh.client import DeviceTimeoutException, GatewayOfflineException
 
 from homeassistant.core import HomeAssistant
@@ -56,11 +56,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             _LOGGER.exception("Failed to fetch stats from gateway")
             raise UpdateFailed(f"Failed to update data: {err}") from err
 
-    async def async_set_mode(self, mode: str, soc: int = 100) -> None:
+    async def async_set_mode(self, mode: Mode) -> None:
         """Set the operating mode."""
         try:
             await self.hass.async_add_executor_job(
-                self._client.set_mode, mode, soc
+                self._client.set_mode, mode
             )
             # Request immediate refresh
             await self.async_request_refresh()
