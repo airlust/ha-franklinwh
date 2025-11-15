@@ -144,8 +144,8 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         key="grid_status",
         name="Grid Status",
         device_class=SensorDeviceClass.ENUM,
-        options=["normal", "down", "offline"],
-        value_fn=lambda stats: stats.current.grid_status.value if stats.current and stats.current.grid_status else None,
+        options=["normal", "down", "off"],
+        value_fn=lambda stats: stats.current.grid_status.name.lower() if stats.current and stats.current.grid_status else None,
         entity_registry_enabled_default=False,
     ),
 )
