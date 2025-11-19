@@ -60,7 +60,17 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
     @property
     def current_option(self) -> str | None:
         """Return the current operating mode."""
-        return self.coordinator.current_mode
+        mode = self.coordinator.current_mode
+        if mode and mode in self._attr_options:
+            return mode
+        if mode:
+            _LOGGER.warning("Current mode '%s' not in valid options: %s", mode, self._attr_options)
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success and self.coordinator.current_mode is not None
 
     async def async_select_option(self, option: str) -> None:
         """Change the operating mode."""

@@ -62,9 +62,15 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 try:
                     mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
                     if mode_data:
-                        self.current_mode = mode_data[0]
+                        mode_name = mode_data[0]
+                        _LOGGER.debug("Fetched current mode: %s (raw data: %s)", mode_name, mode_data)
+                        self.current_mode = mode_name
+                    else:
+                        _LOGGER.warning("get_mode() returned None or empty data")
+                        self.current_mode = None
                 except Exception as mode_err:
-                    _LOGGER.warning("Failed to fetch current mode: %s", mode_err)
+                    _LOGGER.error("Failed to fetch current mode: %s", mode_err, exc_info=True)
+                    self.current_mode = None
 
                 # Success! If we retried, log success
                 if attempt > 0:
