@@ -58,19 +58,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Fetch stats - Client handles token refresh automatically
                 stats = await self.hass.async_add_executor_job(self._client.get_stats)
 
-                # Also fetch current mode (doesn't fail the update if it errors)
-                try:
-                    mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
-                    if mode_data:
-                        mode_name = mode_data[0]
-                        _LOGGER.debug("Fetched current mode: %s (raw data: %s)", mode_name, mode_data)
-                        self.current_mode = mode_name
-                    else:
-                        _LOGGER.warning("get_mode() returned None or empty data")
-                        self.current_mode = None
-                except Exception as mode_err:
-                    _LOGGER.error("Failed to fetch current mode: %s", mode_err, exc_info=True)
-                    self.current_mode = None
+                # Fetch current mode with same retry logic as stats
+                await self._fetch_current_mode()
 
                 # Success! If we retried, log success
                 if attempt > 0:
@@ -104,6 +93,51 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         # Should never reach here, but just in case
         raise UpdateFailed(f"Failed to update data: {last_error}") from last_error
+
+    async def _fetch_current_mode(self) -> None:
+        """Fetch current operating mode with retry logic."""
+        last_error = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
+                if mode_data:
+                    mode_name = mode_data[0]
+                    _LOGGER.debug("Fetched current mode: %s (raw data: %s)", mode_name, mode_data)
+                    self.current_mode = mode_name
+
+                    if attempt > 0:
+                        _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
+                    return
+                else:
+                    _LOGGER.warning("get_mode() returned None or empty data")
+                    self.current_mode = None
+                    return
+
+            except (DeviceTimeoutException, GatewayOfflineException) as err:
+                last_error = err
+
+                if attempt < MAX_RETRIES:
+                    _LOGGER.warning(
+                        "Timeout fetching mode (attempt %d/%d): %s. Retrying in %d seconds...",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        err,
+                        RETRY_DELAY,
+                    )
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+
+                # Out of retries - log but don't fail the entire update
+                _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
+                self.current_mode = None
+                return
+
+            except Exception as mode_err:
+                # Non-retryable error - log but don't fail the entire update
+                _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
+                self.current_mode = None
+                return
 
     async def async_set_mode(self, mode: Mode) -> None:
         """Set the operating mode with retry logic."""
