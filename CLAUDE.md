@@ -66,7 +66,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 ## Key Implementation Notes
 
-1. **Operating Mode Current State**: The integration can read the current operating mode via `coordinator.current_mode`. The select entity displays this value and only shows as available when a valid mode is detected.
+1. **Operating Mode Handling**: The integration calls `_switch_status()` directly to get the raw `runingMode` value from the gateway, then maps it using `MODE_VALUE_MAP` in coordinator.py. This bypasses the library's `get_mode()` method which only supports three standard modes (9322, 9323, 9324) and throws KeyError for customized modes like 113349 (E-TOU-C customized). Unknown modes default to time_of_use with a warning.
 
 2. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
 
