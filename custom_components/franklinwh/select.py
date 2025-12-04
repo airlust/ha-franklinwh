@@ -70,7 +70,9 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.current_mode is not None
+        # Allow mode selection even if we can't read the current mode
+        # (e.g., when gateway returns unsupported mode values)
+        return self.coordinator.last_update_success
 
     async def async_select_option(self, option: str) -> None:
         """Change the operating mode."""
