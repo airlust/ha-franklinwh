@@ -14,13 +14,24 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 
-from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL
+from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_BACKUP
 
 _LOGGER = logging.getLogger(__name__)
 
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
+
+# Map numeric mode values from API to our mode keys
+# The franklinwh library only knows about 9322, 9323, 9324
+# but gateways can return other values like 113349 (customized TOU)
+MODE_VALUE_MAP = {
+    9322: MODE_TIME_OF_USE,
+    9323: MODE_SELF_CONSUMPTION,
+    9324: MODE_BACKUP,
+    # Add known custom modes - 113349 appears to be "E-TOU-C (customized)"
+    113349: MODE_TIME_OF_USE,  # Treat customized TOU as regular TOU
+}
 
 
 class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
@@ -95,22 +106,41 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         raise UpdateFailed(f"Failed to update data: {last_error}") from last_error
 
     async def _fetch_current_mode(self) -> None:
-        """Fetch current operating mode with retry logic."""
+        """Fetch current operating mode with retry logic.
+
+        Uses _switch_status() directly instead of get_mode() to avoid
+        KeyError when gateway returns unsupported mode values.
+        """
         last_error = None
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                mode_data = await self.hass.async_add_executor_job(self._client.get_mode)
-                if mode_data:
-                    mode_name = mode_data[0]
-                    _LOGGER.debug("Fetched current mode: %s (raw data: %s)", mode_name, mode_data)
-                    self.current_mode = mode_name
+                # Call _switch_status() directly to get raw mode value
+                # This avoids the KeyError that get_mode() raises for unknown modes
+                status = await self.hass.async_add_executor_job(self._client._switch_status)
+
+                if status and "runingMode" in status:
+                    raw_mode = status["runingMode"]
+                    _LOGGER.debug("Fetched raw mode value: %s", raw_mode)
+
+                    # Map the numeric mode to our mode key, with fallback for unknown modes
+                    if raw_mode in MODE_VALUE_MAP:
+                        self.current_mode = MODE_VALUE_MAP[raw_mode]
+                        _LOGGER.debug("Mapped mode %s to %s", raw_mode, self.current_mode)
+                    else:
+                        # Unknown mode - default to time_of_use as a safe fallback
+                        _LOGGER.warning(
+                            "Unknown mode value %s from gateway. Treating as time_of_use. "
+                            "Please report this to https://github.com/richo/franklinwh-python/issues",
+                            raw_mode
+                        )
+                        self.current_mode = MODE_TIME_OF_USE
 
                     if attempt > 0:
                         _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
                     return
                 else:
-                    _LOGGER.warning("get_mode() returned None or empty data")
+                    _LOGGER.warning("_switch_status() returned None or missing runingMode")
                     self.current_mode = None
                     return
 
@@ -130,20 +160,6 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # Out of retries - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
-                self.current_mode = None
-                return
-
-            except KeyError as key_err:
-                # Library doesn't recognize the mode value from API
-                # This happens when the gateway returns an undocumented mode value
-                _LOGGER.error(
-                    "Unknown operating mode value from gateway: %s. "
-                    "This mode is not supported by the franklinwh library. "
-                    "Mode selection will be unavailable. "
-                    "Please report this issue at https://github.com/richo/franklinwh-python/issues",
-                    key_err,
-                    exc_info=True,
-                )
                 self.current_mode = None
                 return
 
