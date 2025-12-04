@@ -23,14 +23,17 @@ MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
 
 # Map numeric mode values from API to our mode keys
-# The franklinwh library only knows about 9322, 9323, 9324
-# but gateways can return other values like 113349 (customized TOU)
+# The franklinwh library only knows about standard modes: 9322, 9323, 9324
+# but gateways can return different values for customized modes
 MODE_VALUE_MAP = {
+    # Standard modes
     9322: MODE_TIME_OF_USE,
     9323: MODE_SELF_CONSUMPTION,
     9324: MODE_BACKUP,
-    # Add known custom modes - 113349 appears to be "E-TOU-C (customized)"
-    113349: MODE_TIME_OF_USE,  # Treat customized TOU as regular TOU
+    # Customized modes (observed on user's gateway)
+    113349: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
+    117082: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
+    46540: MODE_BACKUP,              # Customized Emergency Backup
 }
 
 
