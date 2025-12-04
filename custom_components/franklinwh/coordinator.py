@@ -133,6 +133,19 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 self.current_mode = None
                 return
 
+            except KeyError as key_err:
+                # Library doesn't recognize the mode value from API
+                # This happens when the gateway returns an undocumented mode value
+                _LOGGER.error(
+                    "Unknown operating mode value from gateway: %s. "
+                    "This mode is not supported by the franklinwh library. "
+                    "Mode selection will be unavailable. "
+                    "Please report this issue at https://github.com/richo/franklinwh-python/issues",
+                    key_err,
+                )
+                self.current_mode = None
+                return
+
             except Exception as mode_err:
                 # Non-retryable error - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
