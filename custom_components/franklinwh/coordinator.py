@@ -142,6 +142,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                     "Mode selection will be unavailable. "
                     "Please report this issue at https://github.com/richo/franklinwh-python/issues",
                     key_err,
+                    exc_info=True,
                 )
                 self.current_mode = None
                 return
