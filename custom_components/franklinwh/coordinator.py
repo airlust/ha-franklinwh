@@ -61,6 +61,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         # Client expects TokenFetcher object and handles token refresh automatically
         self._client = Client(self._token_fetcher, self.gateway_id)
         self.current_mode: str | None = None
+        self.ambient_temp: float | None = None
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
@@ -139,12 +140,18 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         )
                         self.current_mode = MODE_TIME_OF_USE
 
+                    # Also extract ambient temperature from the same status call
+                    if "t_amb" in status:
+                        self.ambient_temp = status["t_amb"]
+                        _LOGGER.debug("Fetched ambient temperature: %s°C", self.ambient_temp)
+
                     if attempt > 0:
                         _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
                     return
                 else:
                     _LOGGER.warning("_switch_status() returned None or missing runingMode")
                     self.current_mode = None
+                    self.ambient_temp = None
                     return
 
             except (DeviceTimeoutException, GatewayOfflineException) as err:
@@ -164,12 +171,14 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Out of retries - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
                 self.current_mode = None
+                self.ambient_temp = None
                 return
 
             except Exception as mode_err:
                 # Non-retryable error - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
                 self.current_mode = None
+                self.ambient_temp = None
                 return
 
     async def async_set_mode(self, mode: Mode) -> None:

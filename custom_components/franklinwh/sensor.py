@@ -18,6 +18,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfEnergy,
     UnitOfPower,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -153,6 +154,17 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         value_fn=lambda stats: stats.current.grid_status.name.lower() if stats.current and stats.current.grid_status else None,
         entity_registry_enabled_default=False,
     ),
+    FranklinWHSensorEntityDescription(
+        key="ambient_temperature",
+        name="Ambient Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        # Note: This sensor uses coordinator.ambient_temp directly, not from stats
+        value_fn=None,  # Custom handling in FranklinWHAmbientTempSensor
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -171,7 +183,12 @@ async def async_setup_entry(
         if description.exists_fn is not None:
             if coordinator.data and not description.exists_fn(coordinator.data):
                 continue
-        entities.append(FranklinWHSensor(coordinator, description, entry))
+
+        # Use custom sensor class for ambient temperature
+        if description.key == "ambient_temperature":
+            entities.append(FranklinWHAmbientTempSensor(coordinator, description, entry))
+        else:
+            entities.append(FranklinWHSensor(coordinator, description, entry))
 
     async_add_entities(entities)
 
@@ -205,3 +222,12 @@ class FranklinWHSensor(CoordinatorEntity[FranklinWHCoordinator], SensorEntity):
         if self.coordinator.data and self.entity_description.value_fn:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
+
+
+class FranklinWHAmbientTempSensor(FranklinWHSensor):
+    """Ambient temperature sensor that reads from coordinator.ambient_temp."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the ambient temperature from coordinator."""
+        return self.coordinator.ambient_temp
