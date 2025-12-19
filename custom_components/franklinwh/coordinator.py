@@ -70,6 +70,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         if self._client is None:
             self._client = Client(self._token_fetcher, self.gateway_id)
 
+    def _get_stats(self) -> Stats:
+        """Get stats from client (runs in executor)."""
+        return self._client.get_stats()
+
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
         # Ensure client is initialized (first time only)
@@ -82,7 +86,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         for attempt in range(MAX_RETRIES + 1):
             try:
                 # Fetch stats - Client handles token refresh automatically
-                stats = await self.hass.async_add_executor_job(self._client.get_stats)
+                stats = await self.hass.async_add_executor_job(self._get_stats)
 
                 # Fetch current mode with same retry logic as stats
                 await self._fetch_current_mode()
@@ -135,7 +139,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             try:
                 # Call _switch_status() directly to get raw mode value
                 # This avoids the KeyError that get_mode() raises for unknown modes
-                status = await self.hass.async_add_executor_job(self._client._switch_status)
+                status = await self.hass.async_add_executor_job(
+                    self._client._switch_status
+                )
 
                 if status and "runingMode" in status:
                     raw_mode = status["runingMode"]
