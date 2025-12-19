@@ -64,6 +64,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
         self.battery_capacity: float = 15.0  # kWh - will be updated from device info
+        self.tou_schedule: dict | None = None  # TOU rate schedule data
 
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
@@ -90,6 +91,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # Fetch charging power limited status
                 await self._fetch_charging_limited()
+
+                # Fetch TOU schedule (less frequent, don't fail if it errors)
+                await self._fetch_tou_schedule()
 
                 # Success! If we retried, log success
                 if attempt > 0:
@@ -224,6 +228,32 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             _LOGGER.debug("Failed to fetch charging limited status: %s", err)
             self.charging_power_limited = None
 
+    async def _fetch_tou_schedule(self) -> None:
+        """Fetch TOU rate schedule from gateway."""
+        try:
+            if self._client is None:
+                self.tou_schedule = None
+                return
+
+            # Build payload to fetch TOU dispatch details
+            # This contains the complete rate schedule with time periods and rates
+            payload = self._client._build_payload(
+                227,  # getTouDispatchDetail endpoint
+                {"gatewayId": self.gateway_id}
+            )
+            response = await self._client._mqtt_send(payload)
+
+            if response and "result" in response:
+                self.tou_schedule = response["result"]
+                _LOGGER.debug("Fetched TOU schedule successfully")
+            else:
+                self.tou_schedule = None
+                _LOGGER.debug("No TOU schedule data in response")
+
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch TOU schedule: %s", err)
+            self.tou_schedule = None
+
     @property
     def current_charge_rate(self) -> float | None:
         """Calculate current charge rate in kW (positive value when charging)."""
@@ -256,6 +286,134 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         time_hours = remaining_capacity / charge_rate
 
         return time_hours
+
+    def _get_current_season(self) -> dict | None:
+        """Get the current season's TOU schedule based on current month."""
+        if not self.tou_schedule or "strategyList" not in self.tou_schedule:
+            return None
+
+        from datetime import datetime
+        current_month = datetime.now().month
+
+        for season in self.tou_schedule["strategyList"]:
+            months_str = season.get("month", "")
+            if months_str:
+                months = [int(m) for m in months_str.split(",")]
+                if current_month in months:
+                    return season
+
+        return None
+
+    def _get_current_rate_period(self) -> dict | None:
+        """Get the current rate period details."""
+        season = self._get_current_season()
+        if not season or "dayTypeVoList" not in season:
+            return None
+
+        from datetime import datetime
+        current_time = datetime.now().time()
+
+        # Get the first day type (usually "Every day")
+        day_type = season["dayTypeVoList"][0]
+        if "detailVoList" not in day_type:
+            return None
+
+        # Find the current time period
+        for period in day_type["detailVoList"]:
+            start_str = period.get("startHourTime", "")
+            end_str = period.get("endHourTime", "")
+
+            if not start_str or not end_str:
+                continue
+
+            # Parse time strings (format: "HH:MM")
+            start_parts = start_str.split(":")
+            end_parts = end_str.split(":")
+
+            if len(start_parts) == 2 and len(end_parts) == 2:
+                start_time = datetime.strptime(start_str, "%H:%M").time()
+                end_time = datetime.strptime(end_str, "%H:%M").time()
+
+                # Handle periods that cross midnight
+                if end_time < start_time:
+                    if current_time >= start_time or current_time < end_time:
+                        return {**period, **day_type}
+                else:
+                    if start_time <= current_time < end_time:
+                        return {**period, **day_type}
+
+        return None
+
+    @property
+    def tou_current_period(self) -> str | None:
+        """Get the current TOU period name (e.g., 'on-peak', 'off-peak')."""
+        period = self._get_current_rate_period()
+        return period.get("name") if period else None
+
+    @property
+    def tou_current_rate(self) -> float | None:
+        """Get the current electricity rate in $/kWh."""
+        period = self._get_current_rate_period()
+        if not period:
+            return None
+
+        wave_type = period.get("waveType")
+        if wave_type == 2:  # Peak
+            return period.get("eleticRatePeak")
+        elif wave_type == 0:  # Off-peak/Valley
+            return period.get("eleticRateValley")
+        elif wave_type == 1:  # Shoulder
+            return period.get("eleticRateShoulder")
+
+        return None
+
+    @property
+    def tou_next_period_start(self) -> str | None:
+        """Get the start time of the next rate period."""
+        season = self._get_current_season()
+        if not season or "dayTypeVoList" not in season:
+            return None
+
+        from datetime import datetime
+        current_time = datetime.now().time()
+
+        day_type = season["dayTypeVoList"][0]
+        if "detailVoList" not in day_type:
+            return None
+
+        periods = day_type["detailVoList"]
+
+        # Find next period
+        for i, period in enumerate(periods):
+            start_str = period.get("startHourTime", "")
+            if not start_str:
+                continue
+
+            start_time = datetime.strptime(start_str, "%H:%M").time()
+
+            if current_time < start_time:
+                # Return the end time of current period (which is start of next)
+                return period.get("startHourTime")
+
+        # If no future period today, return first period of tomorrow (midnight + first start)
+        if periods:
+            return periods[0].get("startHourTime")
+
+        return None
+
+    @property
+    def tou_utility_company(self) -> str | None:
+        """Get the utility company name."""
+        if not self.tou_schedule or "template" not in self.tou_schedule:
+            return None
+        return self.tou_schedule["template"].get("electricCompany")
+
+    @property
+    def tou_rate_plan(self) -> str | None:
+        """Get the rate plan name."""
+        if not self.tou_schedule or "template" not in self.tou_schedule:
+            return None
+        return self.tou_schedule["template"].get("gridType")
 
     async def async_set_mode(self, mode: Mode) -> None:
         """Set the operating mode with retry logic."""

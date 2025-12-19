@@ -29,19 +29,24 @@
 │  │  │  - Maintains franklinwh.Client instance                     │ │  │
 │  │  │  - Implements retry logic (3 attempts, 3s delay)            │ │  │
 │  │  │  - Exposes data via coordinator.data (Stats object)         │ │  │
-│  │  │  - Stores current_mode, ambient_temp, charging_limited      │ │  │
+│  │  │  - Stores current_mode, ambient_temp, charging_limited,     │ │  │
+│  │  │    tou_schedule                                              │ │  │
 │  │  └─────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                     │  │
 │  │  Key Methods:                                                       │  │
 │  │  • _async_update_data() - Main update loop                         │  │
 │  │  • _fetch_current_mode() - Gets operating mode via _switch_status │  │
 │  │  • _fetch_charging_limited() - Gets BMS limiting status           │  │
+│  │  • _fetch_tou_schedule() - Gets TOU rate schedule                 │  │
 │  │  • async_set_mode() - Changes operating mode                       │  │
 │  │  • async_set_smart_switch_state() - Controls smart switches       │  │
 │  │                                                                     │  │
 │  │  Properties:                                                        │  │
 │  │  • current_charge_rate - Calculated from battery_use              │  │
 │  │  • time_to_full_charge - Estimated based on charge rate           │  │
+│  │  • tou_current_period - Current rate period name                  │  │
+│  │  • tou_current_rate - Current electricity rate                    │  │
+│  │  • tou_next_period_start - Next period start time                 │  │
 │  └──────────────────┬──────────────────────────────────────────────────┘  │
 │                     │                                                     │
 │                     │ Data Distribution                                  │
@@ -64,15 +69,15 @@
 │  │  │ • Ambient Temp   │  │                  │  │  mode unknown   │  │ │
 │  │  │ • Charge Rate    │  └──────────────────┘  │                 │  │ │
 │  │  │ • Time to Full   │                        └─────────────────┘  │ │
-│  │  │                  │  ┌─────────────────┐                        │ │
-│  │  │ Total: 17 sensors│  │  switch.py      │                        │ │
-│  │  └──────────────────┘  │                 │                        │ │
-│  │                        │ • Smart Switch  │                        │ │
-│  │                        │   Controls      │                        │ │
-│  │                        │                 │                        │ │
-│  │                        │  Dynamically    │                        │ │
-│  │                        │  created based  │                        │ │
-│  │                        │  on gateway     │                        │ │
+│  │  │ • TOU Sensors:   │  ┌─────────────────┐                        │ │
+│  │  │   - Current Per. │  │  switch.py      │                        │ │
+│  │  │   - Current Rate │  │                 │                        │ │
+│  │  │   - Next Start   │  │ • Smart Switch  │                        │ │
+│  │  │   - Utility Co.  │  │   Controls      │                        │ │
+│  │  │   - Rate Plan    │  │                 │                        │ │
+│  │  │                  │  │  Dynamically    │                        │ │
+│  │  │ Total: 22 sensors│  │  created based  │                        │ │
+│  │  └──────────────────┘  │  on gateway     │                        │ │
 │  │                        │  configuration  │                        │ │
 │  │                        └─────────────────┘                        │ │
 │  └─────────────────────────────────────────────────────────────────────┘ │
@@ -131,12 +136,12 @@
         │  coordinator._async_update_data()          │
         └────────────────────────────────────────────┘
                                 │
-                ┌───────────────┴───────────────┬──────────────────┐
-                ▼                               ▼                  ▼
-    ┌──────────────────────┐      ┌──────────────────────┐  ┌──────────────┐
-    │ get_stats()          │      │ _fetch_current_mode()│  │ _fetch_      │
-    │                      │      │                      │  │ charging_    │
-    │ Returns Stats:       │      │ Calls:               │  │ limited()    │
+                ┌───────────────┴───────────────┬──────────────────┬──────────────┐
+                ▼                               ▼                  ▼              ▼
+    ┌──────────────────────┐      ┌──────────────────────┐  ┌──────────────┐  ┌─────────────┐
+    │ get_stats()          │      │ _fetch_current_mode()│  │ _fetch_      │  │ _fetch_tou_ │
+    │                      │      │                      │  │ charging_    │  │ schedule()  │
+    │ Returns Stats:       │      │ Calls:               │  │ limited()    │  │             │
     │ • current.solar_     │      │   _switch_status()   │  │              │
     │   production         │      │                      │  │ Gets BMS     │
     │ • current.battery_   │      │ Returns:             │  │ limiting     │

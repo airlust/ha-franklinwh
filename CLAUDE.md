@@ -15,7 +15,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 - **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 60 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
 - **Platforms**: The integration implements four Home Assistant platforms:
-  - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), and charging rate prediction sensors (current charge rate, time to full charge) - 17 sensors total
+  - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), charging rate prediction sensors (current charge rate, time to full charge), and TOU rate sensors (current period, current rate, next period start, utility company, rate plan) - 22 sensors total
   - `binary_sensor.py`: Charging power limited indicator (shows when BMS is limiting charging power)
   - `select.py`: Operating mode selector (Time of Use, Self Consumption, Backup)
   - `switch.py`: Smart circuit control (dynamically created based on gateway configuration)
@@ -28,7 +28,8 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 2. **Data Fetching**: Coordinator calls `await client.get_stats()` every 60 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
 3. **Mode Detection**: Coordinator calls `await client._switch_status()` to get raw mode value, maps it via `MODE_VALUE_MAP` → Stored as `coordinator.current_mode`
 4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
-5. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
+5. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
+6. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
 
 ### Important Data Structures
 
@@ -87,6 +88,17 @@ This is a Home Assistant custom component with no build process. Testing is done
    - `time_to_full_charge`: Calculates hours to 100% SOC based on current charge rate and 15kWh capacity
    - `ambient_temp`: Temperature in Celsius from gateway
    - `charging_power_limited`: Boolean indicating if BMS is limiting charging power
+   - `tou_current_period`: Current TOU period name (e.g., 'on-peak', 'off-peak')
+   - `tou_current_rate`: Current electricity rate in $/kWh
+   - `tou_next_period_start`: Start time of next rate period (HH:MM format)
+   - `tou_utility_company`: Utility company name
+   - `tou_rate_plan`: Rate plan name (e.g., 'E-TOU-C')
+
+9. **TOU Rate Sensors**: The integration fetches Time-of-Use rate schedules from endpoint 227 (`getTouDispatchDetail`). This provides season-based schedules with time periods, rates, and utility information. All TOU sensors are disabled by default (`entity_registry_enabled_default=False`). The schedule includes:
+   - Seasonal variations (Winter/Summer months)
+   - Multiple rate periods per day (on-peak, off-peak, shoulder)
+   - Electricity rates for each period
+   - Utility company and rate plan information
 
 ## Constants and Configuration
 

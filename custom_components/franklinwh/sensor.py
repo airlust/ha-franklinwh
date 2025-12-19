@@ -186,6 +186,50 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         # Note: This sensor uses coordinator.time_to_full_charge property
         value_fn=None,  # Custom handling in FranklinWHTimeToFullSensor
     ),
+    # TOU Rate Sensors
+    FranklinWHSensorEntityDescription(
+        key="tou_current_period",
+        name="TOU Current Period",
+        device_class=None,
+        # Note: This sensor uses coordinator.tou_current_period property
+        value_fn=None,  # Custom handling in FranklinWHTOUPeriodSensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
+        key="tou_current_rate",
+        name="TOU Current Rate",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD/kWh",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=5,
+        # Note: This sensor uses coordinator.tou_current_rate property
+        value_fn=None,  # Custom handling in FranklinWHTOURateSensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
+        key="tou_next_period_start",
+        name="TOU Next Period Start",
+        device_class=None,
+        # Note: This sensor uses coordinator.tou_next_period_start property
+        value_fn=None,  # Custom handling in FranklinWHTOUNextPeriodSensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
+        key="tou_utility_company",
+        name="TOU Utility Company",
+        device_class=None,
+        # Note: This sensor uses coordinator.tou_utility_company property
+        value_fn=None,  # Custom handling in FranklinWHTOUUtilitySensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
+        key="tou_rate_plan",
+        name="TOU Rate Plan",
+        device_class=None,
+        # Note: This sensor uses coordinator.tou_rate_plan property
+        value_fn=None,  # Custom handling in FranklinWHTOURatePlanSensor
+        entity_registry_enabled_default=False,
+    ),
 )
 
 
@@ -212,6 +256,16 @@ async def async_setup_entry(
             entities.append(FranklinWHChargeRateSensor(coordinator, description, entry))
         elif description.key == "time_to_full_charge":
             entities.append(FranklinWHTimeToFullSensor(coordinator, description, entry))
+        elif description.key == "tou_current_period":
+            entities.append(FranklinWHTOUPeriodSensor(coordinator, description, entry))
+        elif description.key == "tou_current_rate":
+            entities.append(FranklinWHTOURateSensor(coordinator, description, entry))
+        elif description.key == "tou_next_period_start":
+            entities.append(FranklinWHTOUNextPeriodSensor(coordinator, description, entry))
+        elif description.key == "tou_utility_company":
+            entities.append(FranklinWHTOUUtilitySensor(coordinator, description, entry))
+        elif description.key == "tou_rate_plan":
+            entities.append(FranklinWHTOURatePlanSensor(coordinator, description, entry))
         else:
             entities.append(FranklinWHSensor(coordinator, description, entry))
 
@@ -274,3 +328,88 @@ class FranklinWHTimeToFullSensor(FranklinWHSensor):
     def native_value(self) -> StateType:
         """Return the time to full charge from coordinator."""
         return self.coordinator.time_to_full_charge
+
+
+class FranklinWHTOUPeriodSensor(FranklinWHSensor):
+    """TOU current period sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the current TOU period from coordinator."""
+        return self.coordinator.tou_current_period
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOURateSensor(FranklinWHSensor):
+    """TOU current rate sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the current electricity rate from coordinator."""
+        return self.coordinator.tou_current_rate
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOUNextPeriodSensor(FranklinWHSensor):
+    """TOU next period start time sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the next period start time from coordinator."""
+        return self.coordinator.tou_next_period_start
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOUUtilitySensor(FranklinWHSensor):
+    """TOU utility company sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the utility company from coordinator."""
+        return self.coordinator.tou_utility_company
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOURatePlanSensor(FranklinWHSensor):
+    """TOU rate plan sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the rate plan from coordinator."""
+        return self.coordinator.tou_rate_plan
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
