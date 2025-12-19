@@ -14,9 +14,10 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 - **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 60 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
-- **Platforms**: The integration implements four Home Assistant platforms:
+- **Platforms**: The integration implements five Home Assistant platforms:
   - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), charging rate prediction sensors (current charge rate, time to full charge), and TOU rate sensors (current period, current rate, next period start, utility company, rate plan) - 22 sensors total
   - `binary_sensor.py`: Charging power limited indicator (shows when BMS is limiting charging power)
+  - `button.py`: Manual TOU schedule refresh button
   - `select.py`: Operating mode selector (Time of Use, Self Consumption, Backup)
   - `switch.py`: Smart circuit control (dynamically created based on gateway configuration)
 
@@ -99,6 +100,8 @@ This is a Home Assistant custom component with no build process. Testing is done
    - Multiple rate periods per day (on-peak, off-peak, shoulder)
    - Electricity rates for each period
    - Utility company and rate plan information
+   - TOU schedule is fetched once per hour (3600 seconds) to minimize API calls
+   - Manual refresh available via "Refresh TOU Schedule" button entity
 
 ## Constants and Configuration
 

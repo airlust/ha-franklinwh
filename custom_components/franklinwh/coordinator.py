@@ -65,6 +65,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.charging_power_limited: bool | None = None
         self.battery_capacity: float = 15.0  # kWh - will be updated from device info
         self.tou_schedule: dict | None = None  # TOU rate schedule data
+        self._last_tou_fetch: float = 0  # Timestamp of last TOU fetch
 
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
@@ -92,8 +93,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Fetch charging power limited status
                 await self._fetch_charging_limited()
 
-                # Fetch TOU schedule (less frequent, don't fail if it errors)
-                await self._fetch_tou_schedule()
+                # Fetch TOU schedule once per hour (don't fail if it errors)
+                await self._fetch_tou_schedule_if_needed()
 
                 # Success! If we retried, log success
                 if attempt > 0:
@@ -228,6 +229,17 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             _LOGGER.debug("Failed to fetch charging limited status: %s", err)
             self.charging_power_limited = None
 
+    async def _fetch_tou_schedule_if_needed(self) -> None:
+        """Fetch TOU schedule only if it's been more than an hour since last fetch."""
+        import time
+        current_time = time.time()
+        time_since_last_fetch = current_time - self._last_tou_fetch
+
+        # Fetch if never fetched (0) or if more than 1 hour has passed
+        if self._last_tou_fetch == 0 or time_since_last_fetch >= 3600:
+            await self._fetch_tou_schedule()
+            self._last_tou_fetch = current_time
+
     async def _fetch_tou_schedule(self) -> None:
         """Fetch TOU rate schedule from gateway."""
         try:
@@ -253,6 +265,15 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         except Exception as err:
             _LOGGER.debug("Failed to fetch TOU schedule: %s", err)
             self.tou_schedule = None
+
+    async def async_refresh_tou_schedule(self) -> None:
+        """Manually refresh TOU schedule (called by button entity)."""
+        _LOGGER.info("Manual TOU schedule refresh requested")
+        await self._fetch_tou_schedule()
+        import time
+        self._last_tou_fetch = time.time()
+        # Request coordinator refresh to update all entities
+        await self.async_request_refresh()
 
     @property
     def current_charge_rate(self) -> float | None:

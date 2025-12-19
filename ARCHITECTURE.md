@@ -37,7 +37,8 @@
 │  │  • _async_update_data() - Main update loop                         │  │
 │  │  • _fetch_current_mode() - Gets operating mode via _switch_status │  │
 │  │  • _fetch_charging_limited() - Gets BMS limiting status           │  │
-│  │  • _fetch_tou_schedule() - Gets TOU rate schedule                 │  │
+│  │  • _fetch_tou_schedule_if_needed() - Gets TOU (hourly)            │  │
+│  │  • async_refresh_tou_schedule() - Manual TOU refresh              │  │
 │  │  • async_set_mode() - Changes operating mode                       │  │
 │  │  • async_set_smart_switch_state() - Controls smart switches       │  │
 │  │                                                                     │  │
@@ -70,14 +71,21 @@
 │  │  │ • Charge Rate    │  └──────────────────┘  │                 │  │ │
 │  │  │ • Time to Full   │                        └─────────────────┘  │ │
 │  │  │ • TOU Sensors:   │  ┌─────────────────┐                        │ │
-│  │  │   - Current Per. │  │  switch.py      │                        │ │
+│  │  │   - Current Per. │  │  button.py      │                        │ │
 │  │  │   - Current Rate │  │                 │                        │ │
-│  │  │   - Next Start   │  │ • Smart Switch  │                        │ │
-│  │  │   - Utility Co.  │  │   Controls      │                        │ │
+│  │  │   - Next Start   │  │ • Refresh TOU   │                        │ │
+│  │  │   - Utility Co.  │  │   Schedule      │                        │ │
 │  │  │   - Rate Plan    │  │                 │                        │ │
-│  │  │                  │  │  Dynamically    │                        │ │
-│  │  │ Total: 22 sensors│  │  created based  │                        │ │
-│  │  └──────────────────┘  │  on gateway     │                        │ │
+│  │  │                  │  └─────────────────┘                        │ │
+│  │  │ Total: 22 sensors│  ┌─────────────────┐                        │ │
+│  │  └──────────────────┘  │  switch.py      │                        │ │
+│  │                        │                 │                        │ │
+│  │                        │ • Smart Switch  │                        │ │
+│  │                        │   Controls      │                        │ │
+│  │                        │                 │                        │ │
+│  │                        │  Dynamically    │                        │ │
+│  │                        │  created based  │                        │ │
+│  │                        │  on gateway     │                        │ │
 │  │                        │  configuration  │                        │ │
 │  │                        └─────────────────┘                        │ │
 │  └─────────────────────────────────────────────────────────────────────┘ │
