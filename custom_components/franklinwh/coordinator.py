@@ -58,15 +58,24 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.password = password
         self.gateway_id = gateway_id
         self._token_fetcher = TokenFetcher(email, password)
-        # Client expects TokenFetcher object and handles token refresh automatically
-        self._client = Client(self._token_fetcher, self.gateway_id)
+        # Client will be created in first update to avoid blocking I/O in __init__
+        self._client: Client | None = None
         self.current_mode: str | None = None
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
         self.battery_capacity: float = 15.0  # kWh - will be updated from device info
 
+    def _ensure_client(self) -> None:
+        """Ensure client is initialized (blocking I/O, must run in executor)."""
+        if self._client is None:
+            self._client = Client(self._token_fetcher, self.gateway_id)
+
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
+        # Ensure client is initialized (first time only)
+        if self._client is None:
+            await self.hass.async_add_executor_job(self._ensure_client)
+
         last_error = None
 
         # Retry logic for transient errors
@@ -186,8 +195,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 self.ambient_temp = None
                 return
 
-    async def _fetch_charging_limited(self) -> None:
-        """Fetch charging power limited status from entrance info."""
+    def _get_charging_limited_status(self) -> bool | None:
+        """Fetch charging power limited status (runs in executor)."""
         try:
             # Build the payload to fetch entrance info
             # This contains the chargingPowerLimited flag
@@ -195,23 +204,24 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 201,
                 {"gatewayId": self.gateway_id}
             )
-            response = await self.hass.async_add_executor_job(
-                self._client._mqtt_send, payload
-            )
+            response = self._client._mqtt_send(payload)
 
             if response and "result" in response:
                 result = response["result"]
                 if "chargingPowerLimited" in result:
-                    self.charging_power_limited = result["chargingPowerLimited"]
-                    _LOGGER.debug("Charging power limited: %s", self.charging_power_limited)
-                else:
-                    self.charging_power_limited = None
-            else:
-                self.charging_power_limited = None
+                    return result["chargingPowerLimited"]
+
+            return None
 
         except Exception as err:
             _LOGGER.debug("Failed to fetch charging limited status: %s", err)
-            self.charging_power_limited = None
+            return None
+
+    async def _fetch_charging_limited(self) -> None:
+        """Fetch charging power limited status from entrance info."""
+        self.charging_power_limited = await self.hass.async_add_executor_job(
+            self._get_charging_limited_status
+        )
 
     @property
     def current_charge_rate(self) -> float | None:
