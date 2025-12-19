@@ -74,6 +74,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         """Get stats from client (runs in executor)."""
         return self._client.get_stats()
 
+    def _get_switch_status(self) -> dict:
+        """Get switch status from client (runs in executor)."""
+        return self._client._switch_status()
+
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
         # Ensure client is initialized (first time only)
@@ -140,7 +144,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Call _switch_status() directly to get raw mode value
                 # This avoids the KeyError that get_mode() raises for unknown modes
                 status = await self.hass.async_add_executor_job(
-                    self._client._switch_status
+                    self._get_switch_status
                 )
 
                 if status and "runingMode" in status:
