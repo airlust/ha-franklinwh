@@ -62,6 +62,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self._client = Client(self._token_fetcher, self.gateway_id)
         self.current_mode: str | None = None
         self.ambient_temp: float | None = None
+        self.charging_power_limited: bool | None = None
+        self.battery_capacity: float = 15.0  # kWh - will be updated from device info
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
@@ -75,6 +77,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # Fetch current mode with same retry logic as stats
                 await self._fetch_current_mode()
+
+                # Fetch charging power limited status
+                await self._fetch_charging_limited()
 
                 # Success! If we retried, log success
                 if attempt > 0:
@@ -180,6 +185,66 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 self.current_mode = None
                 self.ambient_temp = None
                 return
+
+    async def _fetch_charging_limited(self) -> None:
+        """Fetch charging power limited status from entrance info."""
+        try:
+            # Build the payload to fetch entrance info
+            # This contains the chargingPowerLimited flag
+            payload = self._client._build_payload(
+                201,
+                {"gatewayId": self.gateway_id}
+            )
+            response = await self.hass.async_add_executor_job(
+                self._client._mqtt_send, payload
+            )
+
+            if response and "result" in response:
+                result = response["result"]
+                if "chargingPowerLimited" in result:
+                    self.charging_power_limited = result["chargingPowerLimited"]
+                    _LOGGER.debug("Charging power limited: %s", self.charging_power_limited)
+                else:
+                    self.charging_power_limited = None
+            else:
+                self.charging_power_limited = None
+
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch charging limited status: %s", err)
+            self.charging_power_limited = None
+
+    @property
+    def current_charge_rate(self) -> float | None:
+        """Calculate current charge rate in kW (positive value when charging)."""
+        if not self.data or not self.data.current:
+            return None
+
+        battery_power = self.data.current.battery_use
+        # Negative battery_use means charging, return as positive charge rate
+        if battery_power is not None and battery_power < 0:
+            return abs(battery_power)
+        return 0.0
+
+    @property
+    def time_to_full_charge(self) -> float | None:
+        """Calculate time to full charge in hours."""
+        if not self.data or not self.data.current:
+            return None
+
+        current_soc = self.data.current.battery_soc
+        charge_rate = self.current_charge_rate
+
+        if current_soc is None or charge_rate is None or charge_rate == 0:
+            return None
+
+        if current_soc >= 100:
+            return 0.0
+
+        # Calculate remaining capacity and time
+        remaining_capacity = (100 - current_soc) / 100 * self.battery_capacity
+        time_hours = remaining_capacity / charge_rate
+
+        return time_hours
 
     async def async_set_mode(self, mode: Mode) -> None:
         """Set the operating mode with retry logic."""

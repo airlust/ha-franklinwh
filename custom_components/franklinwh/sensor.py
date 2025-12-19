@@ -165,6 +165,27 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         value_fn=None,  # Custom handling in FranklinWHAmbientTempSensor
         entity_registry_enabled_default=False,
     ),
+    # Charging Rate Sensors
+    FranklinWHSensorEntityDescription(
+        key="current_charge_rate",
+        name="Current Charge Rate",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        # Note: This sensor uses coordinator.current_charge_rate property
+        value_fn=None,  # Custom handling in FranklinWHChargeRateSensor
+    ),
+    FranklinWHSensorEntityDescription(
+        key="time_to_full_charge",
+        name="Time to Full Charge",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement="h",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        # Note: This sensor uses coordinator.time_to_full_charge property
+        value_fn=None,  # Custom handling in FranklinWHTimeToFullSensor
+    ),
 )
 
 
@@ -184,9 +205,13 @@ async def async_setup_entry(
             if coordinator.data and not description.exists_fn(coordinator.data):
                 continue
 
-        # Use custom sensor class for ambient temperature
+        # Use custom sensor classes for special sensors
         if description.key == "ambient_temperature":
             entities.append(FranklinWHAmbientTempSensor(coordinator, description, entry))
+        elif description.key == "current_charge_rate":
+            entities.append(FranklinWHChargeRateSensor(coordinator, description, entry))
+        elif description.key == "time_to_full_charge":
+            entities.append(FranklinWHTimeToFullSensor(coordinator, description, entry))
         else:
             entities.append(FranklinWHSensor(coordinator, description, entry))
 
@@ -231,3 +256,21 @@ class FranklinWHAmbientTempSensor(FranklinWHSensor):
     def native_value(self) -> StateType:
         """Return the ambient temperature from coordinator."""
         return self.coordinator.ambient_temp
+
+
+class FranklinWHChargeRateSensor(FranklinWHSensor):
+    """Current charge rate sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the current charge rate from coordinator."""
+        return self.coordinator.current_charge_rate
+
+
+class FranklinWHTimeToFullSensor(FranklinWHSensor):
+    """Time to full charge sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the time to full charge from coordinator."""
+        return self.coordinator.time_to_full_charge
