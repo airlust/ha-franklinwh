@@ -12,21 +12,23 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Core Components
 
-- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 30 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
+- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 60 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
-- **Platforms**: The integration implements three Home Assistant platforms:
-  - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, and diagnostic sensors
+- **Platforms**: The integration implements four Home Assistant platforms:
+  - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), and charging rate prediction sensors (current charge rate, time to full charge) - 17 sensors total
+  - `binary_sensor.py`: Charging power limited indicator (shows when BMS is limiting charging power)
   - `select.py`: Operating mode selector (Time of Use, Self Consumption, Backup)
-  - `switch.py`: Smart circuit control (placeholder implementation - needs actual API data structure)
+  - `switch.py`: Smart circuit control (dynamically created based on gateway configuration)
 
 - **Config Flow** (`config_flow.py`): User-facing setup requiring email, password, and gateway ID. Validates credentials during setup and prevents duplicate entries using gateway ID as unique identifier.
 
 ### Data Flow
 
 1. **Authentication**: `TokenFetcher(email, password)` → `Client(token_fetcher, gateway_id)`
-2. **Data Fetching**: Coordinator calls `client.get_stats()` every 30 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
-3. **Mode Detection**: Coordinator also calls `client.get_mode()` to fetch current operating mode → Stored as `coordinator.current_mode`
-4. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data`
+2. **Data Fetching**: Coordinator calls `await client.get_stats()` every 60 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
+3. **Mode Detection**: Coordinator calls `await client._switch_status()` to get raw mode value, maps it via `MODE_VALUE_MAP` → Stored as `coordinator.current_mode`
+4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
+5. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
 
 ### Important Data Structures
 
@@ -78,14 +80,44 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 6. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
 
+7. **Async/Await Pattern**: The franklinwh library uses async methods (`async def get_stats()`, `async def _switch_status()`, etc.). These MUST be awaited directly, not wrapped in `async_add_executor_job()`. Only sync methods like `set_mode()` should use the executor. Incorrect usage causes "'coroutine' object has no attribute" errors.
+
+8. **Coordinator Properties**: The coordinator exposes calculated properties:
+   - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
+   - `time_to_full_charge`: Calculates hours to 100% SOC based on current charge rate and 15kWh capacity
+   - `ambient_temp`: Temperature in Celsius from gateway
+   - `charging_power_limited`: Boolean indicating if BMS is limiting charging power
+
 ## Constants and Configuration
 
 - **Domain**: `franklinwh`
-- **Update Interval**: 30 seconds (`UPDATE_INTERVAL`)
+- **Update Interval**: 60 seconds (`UPDATE_INTERVAL`)
+- **Retry Configuration**: `MAX_RETRIES = 2`, `RETRY_DELAY = 3` seconds
 - **Required Config**: `CONF_EMAIL`, `CONF_PASSWORD`, `CONF_GATEWAY_ID`
 - **Mode Keys**: Must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`)
+- **Battery Capacity**: 15.0 kWh (used for time-to-full calculations)
 
 ## Dependencies
 
 - `franklinwh>=0.4.1`: Python library for FranklinWH API access
 - Home Assistant core >= 2024.1 (uses modern config flow and coordinator patterns)
+
+## Documentation Maintenance
+
+**IMPORTANT**: When making changes to the codebase, keep the architecture documentation synchronized:
+
+1. **ARCHITECTURE.md**: Update the text-based architecture documentation for any:
+   - New entities or platforms added
+   - Changes to coordinator methods, properties, or data flow
+   - Updates to retry logic or error handling strategies
+   - New mode mappings discovered
+   - Changes to the async/await patterns
+
+2. **architecture.svg**: Update the visual SVG diagram to reflect:
+   - New components in the architecture layers
+   - Changes to data flow paths
+   - Updates to entity counts or types
+   - New configuration constants
+   - Changes to availability logic
+
+Commit documentation updates together with code changes to maintain consistency. The architecture documentation serves as the primary reference for understanding the integration's design and implementation.
