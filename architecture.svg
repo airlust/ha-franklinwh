@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="1400" height="2800" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <style type="text/css">
+      <![CDATA[
+        .component-box {
+          fill: #ffffff;
+          stroke: #2c3e50;
+          stroke-width: 2;
+          rx: 8;
+        }
+        .platform-box {
+          fill: #ecf0f1;
+          stroke: #34495e;
+          stroke-width: 2;
+          rx: 6;
+        }
+        .library-box {
+          fill: #e8f5e9;
+          stroke: #27ae60;
+          stroke-width: 2;
+          rx: 6;
+        }
+        .cloud-box {
+          fill: #e3f2fd;
+          stroke: #3498db;
+          stroke-width: 2;
+          rx: 6;
+        }
+        .device-box {
+          fill: #fff3e0;
+          stroke: #e67e22;
+          stroke-width: 2;
+          rx: 6;
+        }
+        .coordinator-box {
+          fill: #fff9c4;
+          stroke: #f39c12;
+          stroke-width: 2;
+          rx: 6;
+        }
+        .title-text {
+          font-family: 'Arial', sans-serif;
+          font-size: 16px;
+          font-weight: bold;
+          fill: #2c3e50;
+        }
+        .subtitle-text {
+          font-family: 'Arial', sans-serif;
+          font-size: 14px;
+          font-weight: bold;
+          fill: #34495e;
+        }
+        .body-text {
+          font-family: 'Arial', sans-serif;
+          font-size: 12px;
+          fill: #2c3e50;
+        }
+        .small-text {
+          font-family: 'Arial', sans-serif;
+          font-size: 11px;
+          fill: #7f8c8d;
+        }
+        .arrow {
+          stroke: #95a5a6;
+          stroke-width: 2;
+          fill: none;
+          marker-end: url(#arrowhead);
+        }
+        .thick-arrow {
+          stroke: #e74c3c;
+          stroke-width: 3;
+          fill: none;
+          marker-end: url(#arrowhead-red);
+        }
+        .data-arrow {
+          stroke: #3498db;
+          stroke-width: 2;
+          fill: none;
+          marker-end: url(#arrowhead-blue);
+        }
+        .header-box {
+          fill: #3498db;
+          stroke: #2980b9;
+          stroke-width: 2;
+          rx: 8;
+        }
+        .header-text {
+          font-family: 'Arial', sans-serif;
+          font-size: 20px;
+          font-weight: bold;
+          fill: white;
+        }
+        .code-text {
+          font-family: 'Courier New', monospace;
+          font-size: 11px;
+          fill: #c0392b;
+        }
+        .highlight-box {
+          fill: #ffffcc;
+          stroke: #f39c12;
+          stroke-width: 1;
+          rx: 3;
+        }
+      ]]>
+    </style>
+
+    <!-- Arrow markers -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#95a5a6" />
+    </marker>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#e74c3c" />
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#3498db" />
+    </marker>
+  </defs>
+
+  <!-- Main Title -->
+  <rect class="header-box" x="50" y="20" width="1300" height="50"/>
+  <text class="header-text" x="700" y="52" text-anchor="middle">FranklinWH Home Assistant Integration Architecture</text>
+
+  <!-- Home Assistant Core -->
+  <rect class="component-box" x="100" y="100" width="1200" height="80"/>
+  <text class="title-text" x="700" y="130" text-anchor="middle">Home Assistant Core</text>
+  <text class="body-text" x="700" y="155" text-anchor="middle">Config Entry Management • Entity Registry • State Machine</text>
+
+  <!-- Arrow to Integration -->
+  <path class="arrow" d="M 700 180 L 700 220"/>
+  <text class="small-text" x="720" y="205" text-anchor="start">Config Entry</text>
+
+  <!-- Integration Entry Point -->
+  <rect class="component-box" x="100" y="220" width="1200" height="120"/>
+  <text class="title-text" x="700" y="250" text-anchor="middle">FranklinWH Integration (__init__.py)</text>
+  <text class="body-text" x="120" y="275" text-anchor="start">async def async_setup_entry():</text>
+  <text class="code-text" x="140" y="295" text-anchor="start">coordinator = FranklinWHCoordinator(hass, email, password, gateway_id)</text>
+  <text class="code-text" x="140" y="310" text-anchor="start">await coordinator.async_config_entry_first_refresh()</text>
+  <text class="code-text" x="140" y="325" text-anchor="start">await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)</text>
+
+  <!-- Arrow to Coordinator -->
+  <path class="thick-arrow" d="M 700 340 L 700 380"/>
+  <text class="small-text" x="720" y="365" text-anchor="start">Creates & Stores</text>
+
+  <!-- Coordinator -->
+  <rect class="coordinator-box" x="100" y="380" width="1200" height="280"/>
+  <text class="title-text" x="700" y="410" text-anchor="middle">FranklinWHCoordinator (coordinator.py)</text>
+
+  <!-- Coordinator details -->
+  <text class="subtitle-text" x="120" y="440" text-anchor="start">Core Responsibilities:</text>
+  <text class="body-text" x="140" y="460" text-anchor="start">• Updates every 60 seconds (UPDATE_INTERVAL)</text>
+  <text class="body-text" x="140" y="478" text-anchor="start">• Manages franklinwh.Client instance</text>
+  <text class="body-text" x="140" y="496" text-anchor="start">• Implements retry logic (3 attempts, 3s delay)</text>
+  <text class="body-text" x="140" y="514" text-anchor="start">• Exposes data via coordinator.data (Stats object)</text>
+
+  <text class="subtitle-text" x="700" y="440" text-anchor="start">Key Methods:</text>
+  <text class="body-text" x="720" y="460" text-anchor="start">• _async_update_data() - Main update loop</text>
+  <text class="body-text" x="720" y="478" text-anchor="start">• _fetch_current_mode() - Gets operating mode</text>
+  <text class="body-text" x="720" y="496" text-anchor="start">• _fetch_charging_limited() - Gets BMS status</text>
+  <text class="body-text" x="720" y="514" text-anchor="start">• async_set_mode() - Changes operating mode</text>
+
+  <text class="subtitle-text" x="120" y="545" text-anchor="start">Stored Data:</text>
+  <text class="body-text" x="140" y="565" text-anchor="start">• current_mode: str | None</text>
+  <text class="body-text" x="140" y="583" text-anchor="start">• ambient_temp: float | None</text>
+  <text class="body-text" x="140" y="601" text-anchor="start">• charging_power_limited: bool | None</text>
+  <text class="body-text" x="140" y="619" text-anchor="start">• battery_capacity: float = 15.0 kWh</text>
+
+  <text class="subtitle-text" x="700" y="545" text-anchor="start">Properties:</text>
+  <text class="body-text" x="720" y="565" text-anchor="start">• current_charge_rate - From battery_use</text>
+  <text class="body-text" x="720" y="583" text-anchor="start">• time_to_full_charge - Estimated hours</text>
+
+  <!-- Mode Value Map Box -->
+  <rect class="highlight-box" x="1100" y="435" width="180" height="220"/>
+  <text class="subtitle-text" x="1110" y="455" text-anchor="start">MODE_VALUE_MAP</text>
+  <text class="small-text" x="1110" y="475" text-anchor="start">Standard modes:</text>
+  <text class="code-text" x="1120" y="490" text-anchor="start">9322 → TOU</text>
+  <text class="code-text" x="1120" y="505" text-anchor="start">9323 → SELF</text>
+  <text class="code-text" x="1120" y="520" text-anchor="start">9324 → BACKUP</text>
+  <text class="small-text" x="1110" y="540" text-anchor="start">Custom modes:</text>
+  <text class="code-text" x="1120" y="555" text-anchor="start">113349 → TOU</text>
+  <text class="code-text" x="1120" y="570" text-anchor="start">117082 → SELF</text>
+  <text class="code-text" x="1120" y="585" text-anchor="start">46540 → BACKUP</text>
+  <text class="small-text" x="1110" y="605" text-anchor="start">Unknown:</text>
+  <text class="code-text" x="1120" y="620" text-anchor="start">other → TOU</text>
+  <text class="small-text" x="1120" y="640" text-anchor="start">(with warning)</text>
+
+  <!-- Arrow to Platforms -->
+  <path class="data-arrow" d="M 700 660 L 700 700"/>
+  <text class="small-text" x="720" y="685" text-anchor="start">Data Distribution</text>
+
+  <!-- Entity Platforms Container -->
+  <rect class="platform-box" x="100" y="700" width="1200" height="450"/>
+  <text class="title-text" x="700" y="730" text-anchor="middle">Entity Platforms</text>
+
+  <!-- Sensor Platform -->
+  <rect class="component-box" x="120" y="760" width="280" height="360"/>
+  <text class="subtitle-text" x="260" y="785" text-anchor="middle">sensor.py</text>
+  <text class="body-text" x="135" y="810" text-anchor="start">Power Sensors (kW):</text>
+  <text class="small-text" x="145" y="828" text-anchor="start">• Solar Power</text>
+  <text class="small-text" x="145" y="843" text-anchor="start">• Battery Power</text>
+  <text class="small-text" x="145" y="858" text-anchor="start">• Grid Power</text>
+  <text class="small-text" x="145" y="873" text-anchor="start">• Load Power</text>
+  <text class="small-text" x="145" y="888" text-anchor="start">• Generator Power*</text>
+
+  <text class="body-text" x="135" y="915" text-anchor="start">Energy Sensors (kWh):</text>
+  <text class="small-text" x="145" y="933" text-anchor="start">• Solar Energy Today</text>
+  <text class="small-text" x="145" y="948" text-anchor="start">• Battery Charge Today</text>
+  <text class="small-text" x="145" y="963" text-anchor="start">• Battery Discharge Today</text>
+  <text class="small-text" x="145" y="978" text-anchor="start">• Grid Import Today</text>
+  <text class="small-text" x="145" y="993" text-anchor="start">• Grid Export Today</text>
+  <text class="small-text" x="145" y="1008" text-anchor="start">• Consumption Today</text>
+
+  <text class="body-text" x="135" y="1035" text-anchor="start">Other Sensors:</text>
+  <text class="small-text" x="145" y="1053" text-anchor="start">• Battery SOC (%)</text>
+  <text class="small-text" x="145" y="1068" text-anchor="start">• Grid Status (enum)</text>
+  <text class="small-text" x="145" y="1083" text-anchor="start">• Ambient Temp (°C)*</text>
+  <text class="small-text" x="145" y="1098" text-anchor="start">• Current Charge Rate</text>
+  <text class="small-text" x="145" y="1113" text-anchor="start">• Time to Full Charge</text>
+
+  <!-- Binary Sensor Platform -->
+  <rect class="component-box" x="420" y="760" width="240" height="140"/>
+  <text class="subtitle-text" x="540" y="785" text-anchor="middle">binary_sensor.py</text>
+  <text class="body-text" x="435" y="820" text-anchor="start">Charging Power Limited</text>
+  <text class="small-text" x="445" y="840" text-anchor="start">Device Class: PROBLEM</text>
+  <text class="small-text" x="445" y="858" text-anchor="start">Shows when BMS limits</text>
+  <text class="small-text" x="445" y="876" text-anchor="start">charging power</text>
+  <text class="small-text" x="435" y="895" text-anchor="start" font-style="italic">* Disabled by default</text>
+
+  <!-- Select Platform -->
+  <rect class="component-box" x="680" y="760" width="240" height="140"/>
+  <text class="subtitle-text" x="800" y="785" text-anchor="middle">select.py</text>
+  <text class="body-text" x="695" y="820" text-anchor="start">Operating Mode</text>
+  <text class="small-text" x="705" y="840" text-anchor="start">Options:</text>
+  <text class="small-text" x="715" y="858" text-anchor="start">• Time of Use</text>
+  <text class="small-text" x="715" y="876" text-anchor="start">• Self Consumption</text>
+  <text class="small-text" x="715" y="894" text-anchor="start">• Emergency Backup</text>
+
+  <!-- Switch Platform -->
+  <rect class="component-box" x="940" y="760" width="240" height="140"/>
+  <text class="subtitle-text" x="1060" y="785" text-anchor="middle">switch.py</text>
+  <text class="body-text" x="955" y="820" text-anchor="start">Smart Switch Control</text>
+  <text class="small-text" x="965" y="840" text-anchor="start">Dynamically created</text>
+  <text class="small-text" x="965" y="858" text-anchor="start">based on gateway</text>
+  <text class="small-text" x="965" y="876" text-anchor="start">configuration</text>
+
+  <!-- Data Flow Diagram -->
+  <rect class="component-box" x="420" y="920" width="500" height="210"/>
+  <text class="subtitle-text" x="670" y="945" text-anchor="middle">Update Data Flow (Every 60s)</text>
+
+  <text class="body-text" x="435" y="975" text-anchor="start">1. _async_update_data() called</text>
+  <text class="small-text" x="455" y="993" text-anchor="start">↓ await self._client.get_stats()</text>
+  <text class="small-text" x="455" y="1008" text-anchor="start">Returns: Stats (solar, battery, grid, load, SOC, etc.)</text>
+
+  <text class="body-text" x="435" y="1033" text-anchor="start">2. _fetch_current_mode()</text>
+  <text class="small-text" x="455" y="1051" text-anchor="start">↓ await self._client._switch_status()</text>
+  <text class="small-text" x="455" y="1066" text-anchor="start">Returns: runingMode (int), t_amb (float)</text>
+  <text class="small-text" x="455" y="1081" text-anchor="start">Maps mode via MODE_VALUE_MAP</text>
+
+  <text class="body-text" x="435" y="1106" text-anchor="start">3. _fetch_charging_limited()</text>
+  <text class="small-text" x="455" y="1124" text-anchor="start">↓ Gets BMS limiting status</text>
+
+  <!-- Arrow to Library -->
+  <path class="arrow" d="M 700 1150 L 700 1190"/>
+  <text class="small-text" x="720" y="1175" text-anchor="start">Uses</text>
+
+  <!-- franklinwh Library -->
+  <rect class="library-box" x="100" y="1190" width="1200" height="280"/>
+  <text class="title-text" x="700" y="1220" text-anchor="middle">franklinwh Library (v0.4.1+)</text>
+
+  <text class="subtitle-text" x="120" y="1255" text-anchor="start">Client (Async Methods):</text>
+  <text class="code-text" x="140" y="1280" text-anchor="start">async def get_stats(self) -> Stats</text>
+  <text class="small-text" x="160" y="1298" text-anchor="start">Returns power, energy, SOC data</text>
+
+  <text class="code-text" x="140" y="1325" text-anchor="start">async def _switch_status(self) -> dict</text>
+  <text class="small-text" x="160" y="1343" text-anchor="start">Returns: {"runingMode": int, "t_amb": float, ...}</text>
+
+  <text class="code-text" x="140" y="1370" text-anchor="start">async def _mqtt_send(self, payload) -> dict</text>
+  <text class="small-text" x="160" y="1388" text-anchor="start">Low-level MQTT communication</text>
+
+  <text class="subtitle-text" x="700" y="1255" text-anchor="start">Client (Sync Methods):</text>
+  <text class="code-text" x="720" y="1280" text-anchor="start">def set_mode(self, mode: Mode) -> None</text>
+  <text class="small-text" x="740" y="1298" text-anchor="start">Called via async_add_executor_job</text>
+
+  <text class="code-text" x="720" y="1325" text-anchor="start">def set_smart_switch_state(...) -> None</text>
+  <text class="small-text" x="740" y="1343" text-anchor="start">Called via async_add_executor_job</text>
+
+  <text class="subtitle-text" x="120" y="1425" text-anchor="start">TokenFetcher:</text>
+  <text class="small-text" x="140" y="1445" text-anchor="start">• Manages authentication tokens</text>
+  <text class="small-text" x="140" y="1460" text-anchor="start">• Handles automatic refresh</text>
+
+  <!-- Async Pattern Box -->
+  <rect class="highlight-box" x="950" y="1250" width="320" height="210"/>
+  <text class="subtitle-text" x="960" y="1275" text-anchor="start">⚠️ Async/Await Pattern</text>
+  <text class="small-text" x="960" y="1300" text-anchor="start" font-weight="bold">CORRECT:</text>
+  <text class="code-text" x="970" y="1318" text-anchor="start">stats = await client.get_stats()</text>
+  <text class="small-text" x="970" y="1336" text-anchor="start">✓ Async method → use await</text>
+
+  <text class="small-text" x="960" y="1365" text-anchor="start" font-weight="bold">INCORRECT:</text>
+  <text class="code-text" x="970" y="1383" text-anchor="start">stats = await hass.async_add_</text>
+  <text class="code-text" x="970" y="1398" text-anchor="start">  executor_job(client.get_stats)</text>
+  <text class="small-text" x="970" y="1416" text-anchor="start">✗ Returns coroutine object!</text>
+  <text class="small-text" x="970" y="1434" text-anchor="start">✗ Causes 'coroutine' errors</text>
+
+  <!-- Arrow to Cloud -->
+  <path class="arrow" d="M 700 1470 L 700 1510"/>
+  <text class="small-text" x="720" y="1495" text-anchor="start">MQTT over WSS</text>
+
+  <!-- FranklinWH Cloud -->
+  <rect class="cloud-box" x="100" y="1510" width="1200" height="100"/>
+  <text class="title-text" x="700" y="1545" text-anchor="middle">FranklinWH Cloud API</text>
+  <text class="body-text" x="700" y="1575" text-anchor="middle">WebSocket Secure (wss://) • MQTT Protocol • Authentication Server</text>
+
+  <!-- Arrow to Device -->
+  <path class="arrow" d="M 700 1610 L 700 1650"/>
+  <text class="small-text" x="720" y="1635" text-anchor="start">Real-time Data</text>
+
+  <!-- FranklinWH Gateway -->
+  <rect class="device-box" x="100" y="1650" width="1200" height="120"/>
+  <text class="title-text" x="700" y="1685" text-anchor="middle">FranklinWH Gateway (Physical Device)</text>
+  <text class="body-text" x="700" y="1715" text-anchor="middle">Battery Management System • Solar/Grid/Load Monitoring • Smart Switch Control</text>
+  <text class="body-text" x="700" y="1745" text-anchor="middle">Capacity: 15 kWh • Power: 10 kW rated • Operating Modes: TOU, Self Consumption, Backup</text>
+
+  <!-- Retry Logic Diagram -->
+  <rect class="component-box" x="100" y="1810" width="600" height="260"/>
+  <text class="title-text" x="400" y="1840" text-anchor="middle">Retry Logic Strategy</text>
+
+  <text class="subtitle-text" x="120" y="1875" text-anchor="start">Configuration:</text>
+  <text class="body-text" x="140" y="1895" text-anchor="start">MAX_RETRIES = 2 (3 total attempts)</text>
+  <text class="body-text" x="140" y="1913" text-anchor="start">RETRY_DELAY = 3 seconds</text>
+
+  <text class="subtitle-text" x="120" y="1945" text-anchor="start">Transient Errors (DeviceTimeoutException,</text>
+  <text class="subtitle-text" x="120" y="1962" text-anchor="start">GatewayOfflineException):</text>
+  <text class="body-text" x="140" y="1985" text-anchor="start">1. Log warning with attempt number</text>
+  <text class="body-text" x="140" y="2003" text-anchor="start">2. Wait 3 seconds</text>
+  <text class="body-text" x="140" y="2021" text-anchor="start">3. Retry (up to 3 total attempts)</text>
+  <text class="body-text" x="140" y="2039" text-anchor="start">4. After max: Raise UpdateFailed (stats)</text>
+  <text class="body-text" x="140" y="2057" text-anchor="start">   or set to None (mode, charging_limited)</text>
+
+  <!-- Error Handling -->
+  <rect class="component-box" x="720" y="1810" width="580" height="260"/>
+  <text class="title-text" x="1010" y="1840" text-anchor="middle">Error Handling</text>
+
+  <text class="subtitle-text" x="740" y="1875" text-anchor="start">Unknown Mode Value:</text>
+  <text class="body-text" x="760" y="1895" text-anchor="start">• Log warning with value</text>
+  <text class="body-text" x="760" y="1913" text-anchor="start">• Default to MODE_TIME_OF_USE</text>
+  <text class="body-text" x="760" y="1931" text-anchor="start">• Continue operation normally</text>
+  <text class="body-text" x="760" y="1949" text-anchor="start">• Direct user to report to library maintainer</text>
+
+  <text class="subtitle-text" x="740" y="1980" text-anchor="start">Graceful Degradation:</text>
+  <text class="body-text" x="760" y="2000" text-anchor="start">• Mode fetch failure → current_mode = None</text>
+  <text class="body-text" x="760" y="2018" text-anchor="start">  (mode selection still works)</text>
+  <text class="body-text" x="760" y="2036" text-anchor="start">• Charging status failure → binary sensor</text>
+  <text class="body-text" x="760" y="2054" text-anchor="start">  unavailable (other sensors work)</text>
+
+  <!-- Entity Availability -->
+  <rect class="component-box" x="100" y="2100" width="1200" height="220"/>
+  <text class="title-text" x="700" y="2130" text-anchor="middle">Entity Availability Logic</text>
+
+  <text class="subtitle-text" x="120" y="2165" text-anchor="start">Sensor Entities:</text>
+  <text class="body-text" x="140" y="2185" text-anchor="start">Available when: coordinator.last_update_success == True</text>
+  <text class="small-text" x="160" y="2203" text-anchor="start">(inherited from CoordinatorEntity base class)</text>
+  <text class="body-text" x="140" y="2228" text-anchor="start">Special: Ambient Temp also requires ambient_temp is not None</text>
+
+  <text class="subtitle-text" x="120" y="2260" text-anchor="start">Binary Sensor (Charging Limited):</text>
+  <text class="body-text" x="140" y="2280" text-anchor="start">Available when: coordinator.last_update_success AND charging_power_limited is not None</text>
+
+  <text class="subtitle-text" x="700" y="2165" text-anchor="start">Select Entity (Operating Mode):</text>
+  <text class="body-text" x="720" y="2185" text-anchor="start">Available when: coordinator.last_update_success == True</text>
+  <text class="small-text" x="740" y="2203" text-anchor="start">Mode selection works even when current_mode is None!</text>
+  <text class="small-text" x="740" y="2221" text-anchor="start">This allows users to change mode even when</text>
+  <text class="small-text" x="740" y="2239" text-anchor="start">current mode cannot be read from gateway.</text>
+
+  <!-- Key Design Decisions -->
+  <rect class="component-box" x="100" y="2350" width="1200" height="400"/>
+  <text class="title-text" x="700" y="2380" text-anchor="middle">Key Design Decisions</text>
+
+  <text class="subtitle-text" x="120" y="2415" text-anchor="start">1. Coordinator Pattern</text>
+  <text class="body-text" x="140" y="2435" text-anchor="start">• Centralized data fetching prevents multiple simultaneous API calls</text>
+  <text class="body-text" x="140" y="2453" text-anchor="start">• All entities share same data source (coordinator.data)</text>
+  <text class="body-text" x="140" y="2471" text-anchor="start">• Single 60-second update interval applies to all sensors</text>
+
+  <text class="subtitle-text" x="120" y="2500" text-anchor="start">2. Custom Mode Mapping</text>
+  <text class="body-text" x="140" y="2520" text-anchor="start">• Library only knows standard modes (9322, 9323, 9324)</text>
+  <text class="body-text" x="140" y="2538" text-anchor="start">• Integration adds custom mode support (113349, 117082, 46540)</text>
+  <text class="body-text" x="140" y="2556" text-anchor="start">• Uses _switch_status() directly to avoid KeyError from library's get_mode()</text>
+
+  <text class="subtitle-text" x="120" y="2585" text-anchor="start">3. Graceful Degradation</text>
+  <text class="body-text" x="140" y="2605" text-anchor="start">• Mode fetch failure doesn't break sensor updates</text>
+  <text class="body-text" x="140" y="2623" text-anchor="start">• Unknown modes default to safe value (TIME_OF_USE)</text>
+  <text class="body-text" x="140" y="2641" text-anchor="start">• Mode selection works even when current mode cannot be determined</text>
+
+  <text class="subtitle-text" x="700" y="2415" text-anchor="start">4. Pure Async Pattern</text>
+  <text class="body-text" x="720" y="2435" text-anchor="start">• Library async methods awaited directly (not via executor)</text>
+  <text class="body-text" x="720" y="2453" text-anchor="start">• Faster, more efficient, no coroutine object errors</text>
+  <text class="body-text" x="720" y="2471" text-anchor="start">• Only sync methods (set_mode) use executor</text>
+
+  <text class="subtitle-text" x="700" y="2500" text-anchor="start">5. Calculated Sensors</text>
+  <text class="body-text" x="720" y="2520" text-anchor="start">• Charge rate: abs(battery_use) when battery_use &lt; 0</text>
+  <text class="body-text" x="720" y="2538" text-anchor="start">• Time to full: (100-SOC)/100 * 15kWh / charge_rate</text>
+  <text class="body-text" x="720" y="2556" text-anchor="start">• Real-time monitoring better than prediction</text>
+
+  <text class="subtitle-text" x="700" y="2585" text-anchor="start">6. Retry Strategy</text>
+  <text class="body-text" x="720" y="2605" text-anchor="start">• Transient network issues retried automatically</text>
+  <text class="body-text" x="720" y="2623" text-anchor="start">• Critical data (stats) fails update if all retries exhausted</text>
+  <text class="body-text" x="720" y="2641" text-anchor="start">• Optional data (mode) set to None, doesn't block update</text>
+
+  <text class="subtitle-text" x="120" y="2670" text-anchor="start">7. User Experience</text>
+  <text class="body-text" x="140" y="2690" text-anchor="start">• Fewer "unavailable" states due to retry logic</text>
+  <text class="body-text" x="140" y="2708" text-anchor="start">• Mode selection always accessible (even when current mode unknown)</text>
+  <text class="body-text" x="140" y="2726" text-anchor="start">• Clear logging for troubleshooting and bug reports</text>
+
+  <!-- Footer -->
+  <text class="small-text" x="700" y="2780" text-anchor="middle" font-style="italic">Generated for FranklinWH Home Assistant Integration • github.com/airlust/ha-franklinwh</text>
+
+</svg>
