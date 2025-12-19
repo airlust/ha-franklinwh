@@ -140,7 +140,7 @@
 
   <!-- Arrow to Coordinator -->
   <path class="thick-arrow" d="M 700 340 L 700 380"/>
-  <text class="small-text" x="720" y="365" text-anchor="start">Creates & Stores</text>
+  <text class="small-text" x="720" y="365" text-anchor="start">Creates &amp; Stores</text>
 
   <!-- Coordinator -->
   <rect class="coordinator-box" x="100" y="380" width="1200" height="280"/>
