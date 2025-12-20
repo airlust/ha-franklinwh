@@ -348,11 +348,21 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         from datetime import datetime
         current_time = datetime.now().time()
+        _LOGGER.debug("Looking for TOU period at current time: %s", current_time)
 
         # Get the first day type (usually "Every day")
         day_type = season["dayTypeVoList"][0]
         if "detailVoList" not in day_type:
             return None
+
+        # Log all periods for debugging
+        _LOGGER.debug("Available TOU periods:")
+        for p in day_type["detailVoList"]:
+            _LOGGER.debug("  %s: %s - %s (waveType=%s)",
+                         p.get("name"),
+                         p.get("startHourTime"),
+                         p.get("endHourTime"),
+                         p.get("waveType"))
 
         # Find the current time period
         for period in day_type["detailVoList"]:
@@ -374,15 +384,21 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 start_time = datetime.strptime(start_str, "%H:%M").time()
                 end_time = datetime.strptime(end_str, "%H:%M").time()
 
+                _LOGGER.debug("Checking period %s: %s <= %s <= %s?",
+                             period.get("name"), start_time, current_time, end_time)
+
                 # Handle periods that cross midnight
                 if end_time < start_time:
                     if current_time >= start_time or current_time < end_time:
+                        _LOGGER.debug("Matched period (crosses midnight): %s", period.get("name"))
                         return {**period, **day_type}
                 else:
                     # Use <= for end time to include the exact end minute
                     if start_time <= current_time <= end_time:
+                        _LOGGER.debug("Matched period: %s", period.get("name"))
                         return {**period, **day_type}
 
+        _LOGGER.warning("No matching TOU period found for time %s", current_time)
         return None
 
     @property
