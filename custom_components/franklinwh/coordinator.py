@@ -70,8 +70,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
         if self._client is None:
-            # Client creation does SSL setup, but it's fast enough to not need executor
-            self._client = Client(self._token_fetcher, self.gateway_id)
+            # Client creation does SSL setup, run in executor to avoid blocking
+            self._client = await self.hass.async_add_executor_job(
+                Client, self._token_fetcher, self.gateway_id
+            )
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""

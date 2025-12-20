@@ -200,7 +200,7 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         name="TOU Current Rate",
         device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="USD/kWh",
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=None,  # Monetary sensors should not have state_class
         suggested_display_precision=5,
         # Note: This sensor uses coordinator.tou_current_rate property
         value_fn=None,  # Custom handling in FranklinWHTOURateSensor
