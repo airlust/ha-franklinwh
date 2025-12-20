@@ -50,4 +50,6 @@ class FranklinWHTOURefreshButton(CoordinatorEntity[FranklinWHCoordinator], Butto
 
     async def async_press(self) -> None:
         """Handle the button press."""
+        _LOGGER.info("TOU Refresh button pressed")
         await self.coordinator.async_refresh_tou_schedule()
+        _LOGGER.info("TOU Refresh completed")
