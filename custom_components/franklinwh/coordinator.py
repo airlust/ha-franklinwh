@@ -360,6 +360,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             if not start_str or not end_str:
                 continue
 
+            # Handle 24:00 (end of day) by converting to 23:59:59
+            if end_str == "24:00":
+                end_str = "23:59"
+
             # Parse time strings (format: "HH:MM")
             start_parts = start_str.split(":")
             end_parts = end_str.split(":")
@@ -373,7 +377,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                     if current_time >= start_time or current_time < end_time:
                         return {**period, **day_type}
                 else:
-                    if start_time <= current_time < end_time:
+                    # Use <= for end time to include the exact end minute
+                    if start_time <= current_time <= end_time:
                         return {**period, **day_type}
 
         return None
