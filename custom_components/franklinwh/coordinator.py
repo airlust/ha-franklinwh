@@ -470,11 +470,12 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             start_time = datetime.strptime(start_str, "%H:%M").time()
 
             if current_time < start_time:
-                return period
+                # Merge day_type to include rate fields
+                return {**period, **day_type}
 
         # If no future period today, return first period of tomorrow
         if periods:
-            return periods[0]
+            return {**periods[0], **day_type}
 
         return None
 
@@ -495,10 +496,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         """Get the electricity rate for the next period in $/kWh."""
         period = self._get_next_rate_period()
         if not period:
-            _LOGGER.info("No next period found for rate")
             return None
-
-        _LOGGER.info("Next period data: %s", period)
 
         wave_type = period.get("waveType")
         if wave_type == 2:  # Peak
