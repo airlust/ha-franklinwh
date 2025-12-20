@@ -366,6 +366,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         if not season or "dayTypeVoList" not in season:
             return None
 
+        from datetime import datetime
         from homeassistant.util import dt as dt_util
         current_time = dt_util.now().time()
         _LOGGER.info("Looking for TOU period at current time: %s", current_time)
