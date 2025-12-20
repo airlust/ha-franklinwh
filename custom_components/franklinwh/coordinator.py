@@ -348,8 +348,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         if not self.tou_schedule or "strategyList" not in self.tou_schedule:
             return None
 
-        from datetime import datetime
-        current_month = datetime.now().month
+        from homeassistant.util import dt as dt_util
+        current_month = dt_util.now().month
 
         for season in self.tou_schedule["strategyList"]:
             months_str = season.get("month", "")
@@ -366,8 +366,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         if not season or "dayTypeVoList" not in season:
             return None
 
-        from datetime import datetime
-        current_time = datetime.now().time()
+        from homeassistant.util import dt as dt_util
+        current_time = dt_util.now().time()
         _LOGGER.info("Looking for TOU period at current time: %s", current_time)
 
         # Get the first day type (usually "Every day")
@@ -451,8 +451,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         if not season or "dayTypeVoList" not in season:
             return None
 
+        from homeassistant.util import dt as dt_util
         from datetime import datetime
-        current_time = datetime.now().time()
+        current_time = dt_util.now().time()
 
         day_type = season["dayTypeVoList"][0]
         if "detailVoList" not in day_type:
