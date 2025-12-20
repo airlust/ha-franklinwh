@@ -263,13 +263,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 self.tou_schedule = None
                 return
 
-            # Build payload to fetch TOU dispatch details
-            # This contains the complete rate schedule with time periods and rates
-            payload = self._client._build_payload(
-                227,  # getTouDispatchDetail endpoint
-                {"gatewayId": self.gateway_id}
-            )
-            response = await self._client._mqtt_send(payload)
+            # Use _get() method for hes-gateway endpoints (not _mqtt_send)
+            # This endpoint doesn't require gatewayId in the payload
+            url = self._client.url_base + "hes-gateway/terminal/tou/getTouDispatchDetail"
+            response = await self._client._get(url, None)
 
             if response and "result" in response:
                 self.tou_schedule = response["result"]
