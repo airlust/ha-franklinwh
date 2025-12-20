@@ -215,6 +215,14 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
     ),
     FranklinWHSensorEntityDescription(
+        key="tou_next_period_name",
+        name="TOU Next Period",
+        device_class=None,
+        # Note: This sensor uses coordinator.tou_next_period_name property
+        value_fn=None,  # Custom handling in FranklinWHTOUNextPeriodNameSensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
         key="tou_next_period_rate",
         name="TOU Next Period Rate",
         device_class=SensorDeviceClass.MONETARY,
@@ -273,6 +281,8 @@ async def async_setup_entry(
             entities.append(FranklinWHTOURateSensor(coordinator, description, entry))
         elif description.key == "tou_next_period_start":
             entities.append(FranklinWHTOUNextPeriodSensor(coordinator, description, entry))
+        elif description.key == "tou_next_period_name":
+            entities.append(FranklinWHTOUNextPeriodNameSensor(coordinator, description, entry))
         elif description.key == "tou_next_period_rate":
             entities.append(FranklinWHTOUNextPeriodRateSensor(coordinator, description, entry))
         elif description.key == "tou_utility_company":
@@ -384,6 +394,23 @@ class FranklinWHTOUNextPeriodSensor(FranklinWHSensor):
     def native_value(self) -> StateType:
         """Return the next period start time from coordinator."""
         return self.coordinator.tou_next_period_start
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOUNextPeriodNameSensor(FranklinWHSensor):
+    """TOU next period name sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the next period name from coordinator."""
+        return self.coordinator.tou_next_period_name
 
     @property
     def available(self) -> bool:

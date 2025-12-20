@@ -485,6 +485,12 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         return period.get("startHourTime") if period else None
 
     @property
+    def tou_next_period_name(self) -> str | None:
+        """Get the name of the next rate period (e.g., 'on-peak', 'off-peak')."""
+        period = self._get_next_rate_period()
+        return period.get("name") if period else None
+
+    @property
     def tou_next_period_rate(self) -> float | None:
         """Get the electricity rate for the next period in $/kWh."""
         period = self._get_next_rate_period()
