@@ -268,17 +268,36 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             # Use _get() method for hes-gateway endpoints (not _mqtt_send)
             # This endpoint doesn't require gatewayId in the payload
             url = self._client.url_base + "hes-gateway/terminal/tou/getTouDispatchDetail"
+            _LOGGER.info("Fetching TOU schedule from API...")
             response = await self._client._get(url, None)
 
             if response and "result" in response:
                 self.tou_schedule = response["result"]
-                _LOGGER.debug("Fetched TOU schedule successfully")
+                _LOGGER.info("Fetched TOU schedule successfully")
+
+                # Log schedule structure for debugging
+                if "strategyList" in self.tou_schedule:
+                    _LOGGER.debug("TOU schedule has %d season(s)", len(self.tou_schedule["strategyList"]))
+                    for season in self.tou_schedule["strategyList"]:
+                        _LOGGER.debug("  Season months: %s", season.get("month"))
+                        if "dayTypeVoList" in season and season["dayTypeVoList"]:
+                            day_type = season["dayTypeVoList"][0]
+                            if "detailVoList" in day_type:
+                                _LOGGER.debug("  Periods in this season:")
+                                for period in day_type["detailVoList"]:
+                                    _LOGGER.debug("    %s: %s-%s (waveType=%s, rate_peak=%s, rate_valley=%s)",
+                                                 period.get("name"),
+                                                 period.get("startHourTime"),
+                                                 period.get("endHourTime"),
+                                                 period.get("waveType"),
+                                                 period.get("eleticRatePeak"),
+                                                 period.get("eleticRateValley"))
             else:
                 self.tou_schedule = None
-                _LOGGER.debug("No TOU schedule data in response")
+                _LOGGER.warning("No TOU schedule data in response")
 
         except Exception as err:
-            _LOGGER.debug("Failed to fetch TOU schedule: %s", err)
+            _LOGGER.error("Failed to fetch TOU schedule: %s", err)
             self.tou_schedule = None
 
     async def async_refresh_tou_schedule(self) -> None:
