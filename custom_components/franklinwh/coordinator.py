@@ -6,6 +6,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
+import httpx
 from franklinwh import Client, Mode, Stats, TokenFetcher
 from franklinwh.client import DeviceTimeoutException, GatewayOfflineException
 
@@ -107,7 +108,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 return stats
 
-            except (DeviceTimeoutException, GatewayOfflineException) as err:
+            except (DeviceTimeoutException, GatewayOfflineException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
                 last_error = err
 
                 # If we have retries left, wait and try again
