@@ -215,6 +215,17 @@ SENSORS: tuple[FranklinWHSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
     ),
     FranklinWHSensorEntityDescription(
+        key="tou_next_period_rate",
+        name="TOU Next Period Rate",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="USD/kWh",
+        state_class=None,  # Monetary sensors should not have state_class
+        suggested_display_precision=5,
+        # Note: This sensor uses coordinator.tou_next_period_rate property
+        value_fn=None,  # Custom handling in FranklinWHTOUNextPeriodRateSensor
+        entity_registry_enabled_default=False,
+    ),
+    FranklinWHSensorEntityDescription(
         key="tou_utility_company",
         name="TOU Utility Company",
         device_class=None,
@@ -262,6 +273,8 @@ async def async_setup_entry(
             entities.append(FranklinWHTOURateSensor(coordinator, description, entry))
         elif description.key == "tou_next_period_start":
             entities.append(FranklinWHTOUNextPeriodSensor(coordinator, description, entry))
+        elif description.key == "tou_next_period_rate":
+            entities.append(FranklinWHTOUNextPeriodRateSensor(coordinator, description, entry))
         elif description.key == "tou_utility_company":
             entities.append(FranklinWHTOUUtilitySensor(coordinator, description, entry))
         elif description.key == "tou_rate_plan":
@@ -371,6 +384,23 @@ class FranklinWHTOUNextPeriodSensor(FranklinWHSensor):
     def native_value(self) -> StateType:
         """Return the next period start time from coordinator."""
         return self.coordinator.tou_next_period_start
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.tou_schedule is not None
+        )
+
+
+class FranklinWHTOUNextPeriodRateSensor(FranklinWHSensor):
+    """TOU next period rate sensor."""
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the next period rate from coordinator."""
+        return self.coordinator.tou_next_period_rate
 
     @property
     def available(self) -> bool:

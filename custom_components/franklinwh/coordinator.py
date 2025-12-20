@@ -445,9 +445,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         return None
 
-    @property
-    def tou_next_period_start(self) -> str | None:
-        """Get the start time of the next rate period."""
+    def _get_next_rate_period(self) -> dict | None:
+        """Get the next rate period details."""
         season = self._get_current_season()
         if not season or "dayTypeVoList" not in season:
             return None
@@ -471,12 +470,34 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             start_time = datetime.strptime(start_str, "%H:%M").time()
 
             if current_time < start_time:
-                # Return the end time of current period (which is start of next)
-                return period.get("startHourTime")
+                return period
 
-        # If no future period today, return first period of tomorrow (midnight + first start)
+        # If no future period today, return first period of tomorrow
         if periods:
-            return periods[0].get("startHourTime")
+            return periods[0]
+
+        return None
+
+    @property
+    def tou_next_period_start(self) -> str | None:
+        """Get the start time of the next rate period."""
+        period = self._get_next_rate_period()
+        return period.get("startHourTime") if period else None
+
+    @property
+    def tou_next_period_rate(self) -> float | None:
+        """Get the electricity rate for the next period in $/kWh."""
+        period = self._get_next_rate_period()
+        if not period:
+            return None
+
+        wave_type = period.get("waveType")
+        if wave_type == 2:  # Peak
+            return period.get("eleticRatePeak")
+        elif wave_type == 0:  # Off-peak/Valley
+            return period.get("eleticRateValley")
+        elif wave_type == 1:  # Shoulder
+            return period.get("eleticRateShoulder")
 
         return None
 
