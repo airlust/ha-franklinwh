@@ -278,15 +278,15 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # Log schedule structure for debugging
                 if "strategyList" in self.tou_schedule:
-                    _LOGGER.debug("TOU schedule has %d season(s)", len(self.tou_schedule["strategyList"]))
+                    _LOGGER.info("TOU schedule has %d season(s)", len(self.tou_schedule["strategyList"]))
                     for season in self.tou_schedule["strategyList"]:
-                        _LOGGER.debug("  Season months: %s", season.get("month"))
+                        _LOGGER.info("  Season months: %s", season.get("month"))
                         if "dayTypeVoList" in season and season["dayTypeVoList"]:
                             day_type = season["dayTypeVoList"][0]
                             if "detailVoList" in day_type:
-                                _LOGGER.debug("  Periods in this season:")
+                                _LOGGER.info("  Periods in this season:")
                                 for period in day_type["detailVoList"]:
-                                    _LOGGER.debug("    %s: %s-%s (waveType=%s, rate_peak=%s, rate_valley=%s)",
+                                    _LOGGER.info("    %s: %s-%s (waveType=%s, rate_peak=%s, rate_valley=%s)",
                                                  period.get("name"),
                                                  period.get("startHourTime"),
                                                  period.get("endHourTime"),
@@ -368,7 +368,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         from datetime import datetime
         current_time = datetime.now().time()
-        _LOGGER.debug("Looking for TOU period at current time: %s", current_time)
+        _LOGGER.info("Looking for TOU period at current time: %s", current_time)
 
         # Get the first day type (usually "Every day")
         day_type = season["dayTypeVoList"][0]
@@ -376,9 +376,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             return None
 
         # Log all periods for debugging
-        _LOGGER.debug("Available TOU periods:")
+        _LOGGER.info("Available TOU periods:")
         for p in day_type["detailVoList"]:
-            _LOGGER.debug("  %s: %s - %s (waveType=%s)",
+            _LOGGER.info("  %s: %s - %s (waveType=%s)",
                          p.get("name"),
                          p.get("startHourTime"),
                          p.get("endHourTime"),
@@ -404,18 +404,18 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 start_time = datetime.strptime(start_str, "%H:%M").time()
                 end_time = datetime.strptime(end_str, "%H:%M").time()
 
-                _LOGGER.debug("Checking period %s: %s <= %s <= %s?",
+                _LOGGER.info("Checking period %s: %s <= %s <= %s?",
                              period.get("name"), start_time, current_time, end_time)
 
                 # Handle periods that cross midnight
                 if end_time < start_time:
                     if current_time >= start_time or current_time < end_time:
-                        _LOGGER.debug("Matched period (crosses midnight): %s", period.get("name"))
+                        _LOGGER.info("Matched period (crosses midnight): %s", period.get("name"))
                         return {**period, **day_type}
                 else:
                     # Use <= for end time to include the exact end minute
                     if start_time <= current_time <= end_time:
-                        _LOGGER.debug("Matched period: %s", period.get("name"))
+                        _LOGGER.info("Matched period: %s", period.get("name"))
                         return {**period, **day_type}
 
         _LOGGER.warning("No matching TOU period found for time %s", current_time)
