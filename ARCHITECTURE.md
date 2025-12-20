@@ -37,6 +37,7 @@
 │  │  • _async_update_data() - Main update loop                         │  │
 │  │  • _fetch_current_mode() - Gets operating mode via _switch_status │  │
 │  │  • _fetch_charging_limited() - Gets BMS limiting status           │  │
+│  │  • _fetch_ambient_temp() - Gets temperature via _status           │  │
 │  │  • _fetch_tou_schedule_if_needed() - Gets TOU (hourly)            │  │
 │  │  • async_refresh_tou_schedule() - Manual TOU refresh              │  │
 │  │  • async_set_mode() - Changes operating mode                       │  │

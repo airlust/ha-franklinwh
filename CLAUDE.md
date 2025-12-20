@@ -29,8 +29,9 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 2. **Data Fetching**: Coordinator calls `await client.get_stats()` every 60 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
 3. **Mode Detection**: Coordinator calls `await client._switch_status()` to get raw mode value, maps it via `MODE_VALUE_MAP` → Stored as `coordinator.current_mode`
 4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
-5. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
-6. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
+5. **Ambient Temperature**: Coordinator calls `await client._status()` to get ambient temperature from gateway → Stored as `coordinator.ambient_temp`
+6. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
+7. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
 
 ### Important Data Structures
 

@@ -93,6 +93,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Fetch charging power limited status
                 await self._fetch_charging_limited()
 
+                # Fetch ambient temperature from _status endpoint
+                await self._fetch_ambient_temp()
+
                 # Fetch TOU schedule once per hour (don't fail if it errors)
                 await self._fetch_tou_schedule_if_needed()
 
@@ -161,18 +164,12 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         )
                         self.current_mode = MODE_TIME_OF_USE
 
-                    # Also extract ambient temperature from the same status call
-                    if "t_amb" in status:
-                        self.ambient_temp = status["t_amb"]
-                        _LOGGER.debug("Fetched ambient temperature: %s°C", self.ambient_temp)
-
                     if attempt > 0:
                         _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
                     return
                 else:
                     _LOGGER.warning("_switch_status() returned None or missing runingMode")
                     self.current_mode = None
-                    self.ambient_temp = None
                     return
 
             except (DeviceTimeoutException, GatewayOfflineException) as err:
@@ -192,15 +189,34 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Out of retries - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
                 self.current_mode = None
-                self.ambient_temp = None
                 return
 
             except Exception as mode_err:
                 # Non-retryable error - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
                 self.current_mode = None
+                return
+
+    async def _fetch_ambient_temp(self) -> None:
+        """Fetch ambient temperature from _status endpoint."""
+        try:
+            if self._client is None:
                 self.ambient_temp = None
                 return
+
+            # Call _status() to get raw status data including t_amb
+            status = await self._client._status()
+
+            if status and "t_amb" in status:
+                self.ambient_temp = status["t_amb"]
+                _LOGGER.debug("Fetched ambient temperature: %s°C", self.ambient_temp)
+            else:
+                self.ambient_temp = None
+                _LOGGER.debug("No ambient temperature in _status response")
+
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch ambient temperature: %s", err)
+            self.ambient_temp = None
 
     async def _fetch_charging_limited(self) -> None:
         """Fetch charging power limited status from entrance info."""
