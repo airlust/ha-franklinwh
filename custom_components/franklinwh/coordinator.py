@@ -49,6 +49,10 @@ MODE_VALUE_MAP = {
     113349: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
     117082: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
     46540: MODE_BACKUP,              # Customized Emergency Backup
+    # Customized modes (observed on user's aHub)
+    161804: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
+    130849: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
+    111374: MODE_BACKUP,            # Customized Emergency Backup
 }
 
 
