@@ -1,6 +1,8 @@
 """Config flow for FranklinWH Energy Storage integration."""
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 from typing import Any
 
@@ -27,6 +29,15 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+async def _async_resolve(value: Any) -> Any:
+    """Resolve nested awaitables returned by franklinwh client methods."""
+    depth = 0
+    while inspect.isawaitable(value) and depth < 5:
+        value = await value
+        depth += 1
+    return value
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
@@ -39,7 +50,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     client = Client(token_fetcher, data[CONF_GATEWAY_ID])
 
     try:
-        stats = await hass.async_add_executor_job(client.get_stats)
+        if asyncio.iscoroutinefunction(client.get_stats):
+            stats = await client.get_stats()
+        else:
+            stats = await hass.async_add_executor_job(client.get_stats)
+
+        # Some franklinwh versions may return nested awaitables; resolve them.
+        stats = await _async_resolve(stats)
     except InvalidCredentialsException as err:
         raise InvalidAuth from err
     except AccountLockedException as err:

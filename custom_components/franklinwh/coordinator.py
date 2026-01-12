@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 import logging
+import inspect
 from typing import Any
 
 import httpx
@@ -36,6 +37,19 @@ MODE_VALUE_MAP = {
     117082: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
     46540: MODE_BACKUP,              # Customized Emergency Backup
 }
+
+
+async def _async_resolve(value: Any) -> Any:
+    """Resolve nested awaitables returned by franklinwh client methods.
+
+    Some franklinwh versions return coroutine objects even after awaiting client calls.
+    This helper awaits repeatedly until a concrete value is returned (or depth limit reached).
+    """
+    depth = 0
+    while inspect.isawaitable(value) and depth < 5:
+        value = await value
+        depth += 1
+    return value
 
 
 class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
@@ -88,7 +102,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         for attempt in range(MAX_RETRIES + 1):
             try:
                 # Fetch stats - library method is async, await it directly
-                stats = await self._client.get_stats()
+                stats = await _async_resolve(self._client.get_stats())
 
                 # Fetch current mode with same retry logic as stats
                 await self._fetch_current_mode()
@@ -148,7 +162,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Call _switch_status() directly to get raw mode value
                 # This avoids the KeyError that get_mode() raises for unknown modes
                 # Note: _switch_status might be async, await it directly
-                status = await self._client._switch_status()
+                status = await _async_resolve(self._client._switch_status())
 
                 if status and "runingMode" in status:
                     raw_mode = status["runingMode"]
@@ -208,7 +222,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 return
 
             # Call _status() to get raw status data including t_amb
-            status = await self._client._status()
+            status = await _async_resolve(self._client._status())
 
             if status and "t_amb" in status:
                 self.ambient_temp = status["t_amb"]
@@ -233,7 +247,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 201,
                 {"gatewayId": self.gateway_id}
             )
-            response = await self._client._mqtt_send(payload)
+            response = await _async_resolve(self._client._mqtt_send(payload))
 
             if response and "result" in response:
                 result = response["result"]
@@ -270,7 +284,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             # This endpoint doesn't require gatewayId in the payload
             url = self._client.url_base + "hes-gateway/terminal/tou/getTouDispatchDetail"
             _LOGGER.info("Fetching TOU schedule from API...")
-            response = await self._client._get(url, None)
+            response = await _async_resolve(self._client._get(url, None))
 
             if response and "result" in response:
                 self.tou_schedule = response["result"]
@@ -528,9 +542,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                await self.hass.async_add_executor_job(
+                result = await self.hass.async_add_executor_job(
                     self._client.set_mode, mode
                 )
+                await _async_resolve(result)
                 # Success! Request immediate refresh to get updated data
                 await self.async_request_refresh()
 
@@ -567,9 +582,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                await self.hass.async_add_executor_job(
+                result = await self.hass.async_add_executor_job(
                     self._client.set_smart_switch_state, switch_id, state
                 )
+                await _async_resolve(result)
                 # Success! Request immediate refresh
                 await self.async_request_refresh()
 
