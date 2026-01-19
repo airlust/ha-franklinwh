@@ -24,9 +24,12 @@ _LOGGER = logging.getLogger(__name__)
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
+MAX_STALE_CYCLES = 10  # consecutive failed update cycles before marking unavailable
+
+# Adaptive polling/backoff (applies after an update fully fails, i.e. after retries)
 MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
 BACKOFF_FACTOR = 2.0
-BACKOFF_JITTER_PCT = 0.10
+BACKOFF_JITTER_PCT = 0.10  # +/- 10%
 
 # Map numeric mode values from API to our mode keys
 # The franklinwh library only knows about standard modes: 9322, 9323, 9324
@@ -175,13 +178,29 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
 
-                # Out of retries, apply adaptive backoff and fail the update
+                # Out of retries, apply adaptive backoff and either return cached data or fail the update
                 self._consecutive_update_failures += 1
                 backoff_interval = self._compute_backoff_interval()
                 self._set_update_interval(
                     backoff_interval,
                     f"backoff after {self._consecutive_update_failures} failed update(s)",
                 )
+
+                # If we have cached data, keep entities available by returning stale values.
+                # After MAX_STALE_CYCLES consecutive failed update cycles, mark unavailable.
+                if self.data is not None:
+                    if self._consecutive_update_failures < MAX_STALE_CYCLES:
+                        _LOGGER.warning(
+                            "Gateway refresh timed out after %d attempts; keeping last known values (failure count=%d)",
+                            MAX_RETRIES + 1,
+                            self._consecutive_update_failures,
+                        )
+                        return self.data
+
+                    _LOGGER.error(
+                        "Exceeded max stale cycles (%d); marking unavailable",
+                        MAX_STALE_CYCLES,
+                    )
 
                 _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, err)
                 raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {err}") from err
