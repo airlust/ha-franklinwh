@@ -5,6 +5,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import inspect
+import random
 from typing import Any
 
 import httpx
@@ -23,6 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
+MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
+BACKOFF_FACTOR = 2.0
+BACKOFF_JITTER_PCT = 0.10
 
 # Map numeric mode values from API to our mode keys
 # The franklinwh library only knows about standard modes: 9322, 9323, 9324
@@ -82,6 +86,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.tou_schedule: dict | None = None  # TOU rate schedule data
         self._last_tou_fetch: float = 0  # Timestamp of last TOU fetch
 
+        # Adaptive polling/backoff state
+        self._consecutive_update_failures: int = 0
+        self._base_update_interval: timedelta = UPDATE_INTERVAL
+        self._max_backoff_interval: timedelta = MAX_BACKOFF_INTERVAL
+
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
         if self._client is None:
@@ -89,6 +98,30 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             self._client = await self.hass.async_add_executor_job(
                 Client, self._token_fetcher, self.gateway_id
             )
+
+    def _set_update_interval(self, new_interval: timedelta, reason: str) -> None:
+        """Update coordinator polling interval (adaptive backoff)."""
+        # DataUpdateCoordinator schedules the next refresh using whatever update_interval
+        # is set to at the end of the update cycle.
+        if self.update_interval != new_interval:
+            self.update_interval = new_interval
+            _LOGGER.info("Polling interval set to %s (%s)", new_interval, reason)
+
+    def _compute_backoff_interval(self) -> timedelta:
+        """Compute next polling interval using exponential backoff + jitter."""
+        base_seconds = self._base_update_interval.total_seconds()
+        max_seconds = self._max_backoff_interval.total_seconds()
+
+        # First failed update => base * factor, second => base * factor^2, third => base * factor^3, ...
+        exp_seconds = base_seconds * (BACKOFF_FACTOR ** self._consecutive_update_failures)
+        exp_seconds = min(exp_seconds, max_seconds)
+
+        jitter = exp_seconds * BACKOFF_JITTER_PCT
+        exp_seconds = exp_seconds + random.uniform(-jitter, jitter)
+
+        # Clamp and ensure we never go below base
+        exp_seconds = max(base_seconds, min(exp_seconds, max_seconds))
+        return timedelta(seconds=exp_seconds)
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
@@ -120,6 +153,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 if attempt > 0:
                     _LOGGER.info("Successfully fetched data after %d retry(ies)", attempt)
 
+                # Reset adaptive backoff on success
+                if self._consecutive_update_failures > 0:
+                    self._consecutive_update_failures = 0
+                    self._set_update_interval(self._base_update_interval, "recovered")
+
                 return stats
 
             except (DeviceTimeoutException, GatewayOfflineException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
@@ -137,7 +175,14 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
 
-                # Out of retries, fail the update
+                # Out of retries, apply adaptive backoff and fail the update
+                self._consecutive_update_failures += 1
+                backoff_interval = self._compute_backoff_interval()
+                self._set_update_interval(
+                    backoff_interval,
+                    f"backoff after {self._consecutive_update_failures} failed update(s)",
+                )
+
                 _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, err)
                 raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {err}") from err
 
