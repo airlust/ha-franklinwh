@@ -24,6 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
+UPDATE_RETRY_DELAYS = [5, 15]  # seconds between update retries
+SUCCESS_INTERVAL_JITTER = 5  # seconds (+/-) applied to successful polling interval
+EXTRA_FETCH_INTERVAL = timedelta(minutes=5)  # cadence for non-critical extra queries
 MAX_STALE_CYCLES = 10  # consecutive failed update cycles before marking unavailable
 
 # Adaptive polling/backoff (applies after an update fully fails, i.e. after retries)
@@ -88,6 +91,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.battery_capacity: float = 15.0  # kWh - will be updated from device info
         self.tou_schedule: dict | None = None  # TOU rate schedule data
         self._last_tou_fetch: float = 0  # Timestamp of last TOU fetch
+        self._last_extra_fetch: float = 0  # Timestamp of last non-critical extra fetch
 
         # Adaptive polling/backoff state
         self._consecutive_update_failures: int = 0
@@ -108,7 +112,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         # is set to at the end of the update cycle.
         if self.update_interval != new_interval:
             self.update_interval = new_interval
-            _LOGGER.info("Polling interval set to %s (%s)", new_interval, reason)
+            (
+                _LOGGER.debug if reason.startswith("jitter") else _LOGGER.info
+            )("Polling interval set to %s (%s)", new_interval, reason)
 
     def _compute_backoff_interval(self) -> timedelta:
         """Compute next polling interval using exponential backoff + jitter."""
@@ -126,6 +132,35 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         exp_seconds = max(base_seconds, min(exp_seconds, max_seconds))
         return timedelta(seconds=exp_seconds)
 
+    def _compute_jittered_success_interval(self) -> timedelta:
+        """Compute a slightly jittered polling interval for successful cycles.
+
+        This helps de-phase polling from periodic backend/gateway hiccups.
+        """
+        base_seconds = UPDATE_INTERVAL.total_seconds()
+        jitter = random.uniform(-SUCCESS_INTERVAL_JITTER, SUCCESS_INTERVAL_JITTER)
+        seconds = base_seconds + jitter
+        # Never go below 10s to avoid hammering.
+        seconds = max(10.0, seconds)
+        return timedelta(seconds=seconds)
+
+    async def _fetch_extra_data_if_needed(self) -> None:
+        """Fetch non-critical extra data on a slower cadence.
+
+        This reduces total command volume (and therefore the odds of hitting the
+        Franklin cloud/gateway "Device response timed out" windows).
+        """
+        import time
+
+        now = time.time()
+        if self._last_extra_fetch == 0 or (now - self._last_extra_fetch) >= EXTRA_FETCH_INTERVAL.total_seconds():
+            self._last_extra_fetch = now
+
+            # These calls are explicitly non-fatal; each method handles its own errors.
+            await self._fetch_current_mode()
+            await self._fetch_charging_limited()
+            await self._fetch_ambient_temp()
+
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
         # Ensure client is initialized (first time only)
@@ -140,14 +175,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Fetch stats - library method is async, await it directly
                 stats = await _async_resolve(self._client.get_stats())
 
-                # Fetch current mode with same retry logic as stats
-                await self._fetch_current_mode()
-
-                # Fetch charging power limited status
-                await self._fetch_charging_limited()
-
-                # Fetch ambient temperature from _status endpoint
-                await self._fetch_ambient_temp()
+                # Fetch non-critical extras on a slower cadence to reduce request volume
+                await self._fetch_extra_data_if_needed()
 
                 # Fetch TOU schedule once per hour (don't fail if it errors)
                 await self._fetch_tou_schedule_if_needed()
@@ -159,7 +188,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Reset adaptive backoff on success
                 if self._consecutive_update_failures > 0:
                     self._consecutive_update_failures = 0
-                    self._set_update_interval(self._base_update_interval, "recovered")
+
+                # Apply small jitter on successful cycles to de-phase polling
+                jittered_interval = self._compute_jittered_success_interval()
+                self._set_update_interval(jittered_interval, "jitter")
 
                 return stats
 
@@ -168,14 +200,16 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # If we have retries left, wait and try again
                 if attempt < MAX_RETRIES:
+                    idx = min(attempt, len(UPDATE_RETRY_DELAYS) - 1)
+                    delay = UPDATE_RETRY_DELAYS[idx]
                     _LOGGER.warning(
                         "Transient error fetching data (attempt %d/%d): %s. Retrying in %d seconds...",
                         attempt + 1,
                         MAX_RETRIES + 1,
                         err,
-                        RETRY_DELAY,
+                        delay,
                     )
-                    await asyncio.sleep(RETRY_DELAY)
+                    await asyncio.sleep(delay)
                     continue
 
                 # Out of retries, apply adaptive backoff and either return cached data or fail the update
