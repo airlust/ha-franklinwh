@@ -5,6 +5,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import inspect
+import random
 from typing import Any
 
 import httpx
@@ -23,6 +24,18 @@ _LOGGER = logging.getLogger(__name__)
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
+
+# Per-attempt retry delays for the main stats refresh
+UPDATE_RETRY_DELAYS = [5, 15]  # seconds between update retries
+
+# Optional safety knob: number of consecutive failed update cycles to tolerate
+# while returning cached data (prevents entities flipping to "unavailable").
+MAX_STALE_CYCLES = 10
+
+# Adaptive polling/backoff (applies after an update fully fails, i.e. after retries)
+MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
+BACKOFF_FACTOR = 2.0
+BACKOFF_JITTER_PCT = 0.10  # +/- 10%
 
 # Map numeric mode values from API to our mode keys
 # The franklinwh library only knows about standard modes: 9322, 9323, 9324
@@ -75,12 +88,20 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self._token_fetcher = TokenFetcher(email, password)
         # Client will be created in first update to avoid blocking I/O in __init__
         self._client: Client | None = None
+        # Serialize all franklinwh client network calls to avoid overlapping
+        # requests (which can trigger token/auth edge cases).
+        self._client_lock = asyncio.Lock()
         self.current_mode: str | None = None
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
         self.battery_capacity: float = 15.0  # kWh - will be updated from device info
         self.tou_schedule: dict | None = None  # TOU rate schedule data
         self._last_tou_fetch: float = 0  # Timestamp of last TOU fetch
+
+        # Adaptive polling/backoff state
+        self._consecutive_update_failures: int = 0
+        self._base_update_interval: timedelta = UPDATE_INTERVAL
+        self._max_backoff_interval: timedelta = MAX_BACKOFF_INTERVAL
 
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
@@ -89,6 +110,38 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             self._client = await self.hass.async_add_executor_job(
                 Client, self._token_fetcher, self.gateway_id
             )
+
+    def _set_update_interval(self, new_interval: timedelta, reason: str) -> None:
+        """Update coordinator polling interval (adaptive backoff)."""
+        # Prefer DataUpdateCoordinator's rescheduler if available so the new
+        # interval takes effect immediately (not just after a restart).
+        if self.update_interval != new_interval:
+            if hasattr(self, "async_set_update_interval"):
+                try:
+                    self.async_set_update_interval(new_interval)
+                except Exception:
+                    # Fall back to simple assignment if HA's API differs.
+                    self.update_interval = new_interval
+            else:
+                self.update_interval = new_interval
+
+            _LOGGER.info("Polling interval set to %s (%s)", new_interval, reason)
+
+    def _compute_backoff_interval(self) -> timedelta:
+        """Compute next polling interval using exponential backoff + jitter."""
+        base_seconds = self._base_update_interval.total_seconds()
+        max_seconds = self._max_backoff_interval.total_seconds()
+
+        # First failed update => base * 1, second => base * 2, third => base * 4, ...
+        exp_seconds = base_seconds * (BACKOFF_FACTOR ** max(0, self._consecutive_update_failures - 1))
+        exp_seconds = min(exp_seconds, max_seconds)
+
+        jitter = exp_seconds * BACKOFF_JITTER_PCT
+        exp_seconds = exp_seconds + random.uniform(-jitter, jitter)
+
+        # Clamp and ensure we never go below base
+        exp_seconds = max(base_seconds, min(exp_seconds, max_seconds))
+        return timedelta(seconds=exp_seconds)
 
     async def _async_update_data(self) -> Stats:
         """Fetch data from FranklinWH with retry logic."""
@@ -102,7 +155,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         for attempt in range(MAX_RETRIES + 1):
             try:
                 # Fetch stats - library method is async, await it directly
-                stats = await _async_resolve(self._client.get_stats())
+                async with self._client_lock:
+                    stats = await _async_resolve(self._client.get_stats())
 
                 # Fetch current mode with same retry logic as stats
                 await self._fetch_current_mode()
@@ -120,6 +174,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 if attempt > 0:
                     _LOGGER.info("Successfully fetched data after %d retry(ies)", attempt)
 
+                # Reset adaptive backoff on success
+                if self._consecutive_update_failures > 0:
+                    self._consecutive_update_failures = 0
+                    self._set_update_interval(self._base_update_interval, "recovered")
+
                 return stats
 
             except (DeviceTimeoutException, GatewayOfflineException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
@@ -127,17 +186,42 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # If we have retries left, wait and try again
                 if attempt < MAX_RETRIES:
+                    idx = min(attempt, len(UPDATE_RETRY_DELAYS) - 1)
+                    delay = UPDATE_RETRY_DELAYS[idx]
                     _LOGGER.warning(
                         "Transient error fetching data (attempt %d/%d): %s. Retrying in %d seconds...",
                         attempt + 1,
                         MAX_RETRIES + 1,
                         err,
-                        RETRY_DELAY,
+                        delay,
                     )
-                    await asyncio.sleep(RETRY_DELAY)
+                    await asyncio.sleep(delay)
                     continue
 
-                # Out of retries, fail the update
+                # Out of retries, apply adaptive backoff and either return cached data or fail the update
+                self._consecutive_update_failures += 1
+                backoff_interval = self._compute_backoff_interval()
+                self._set_update_interval(
+                    backoff_interval,
+                    f"backoff after {self._consecutive_update_failures} failed update(s)",
+                )
+
+                # If we have cached data, keep entities available by returning stale values.
+                # After MAX_STALE_CYCLES consecutive failed update cycles, mark unavailable.
+                if self.data is not None:
+                    if self._consecutive_update_failures <= MAX_STALE_CYCLES:
+                        _LOGGER.warning(
+                            "Gateway refresh timed out after %d attempts; keeping last known values (failure count=%d)",
+                            MAX_RETRIES + 1,
+                            self._consecutive_update_failures,
+                        )
+                        return self.data
+
+                    _LOGGER.error(
+                        "Exceeded max stale cycles (%d); marking unavailable",
+                        MAX_STALE_CYCLES,
+                    )
+
                 _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, err)
                 raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {err}") from err
 
@@ -162,7 +246,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Call _switch_status() directly to get raw mode value
                 # This avoids the KeyError that get_mode() raises for unknown modes
                 # Note: _switch_status might be async, await it directly
-                status = await _async_resolve(self._client._switch_status())
+                async with self._client_lock:
+                    status = await _async_resolve(self._client._switch_status())
 
                 if status and "runingMode" in status:
                     raw_mode = status["runingMode"]
@@ -222,7 +307,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 return
 
             # Call _status() to get raw status data including t_amb
-            status = await _async_resolve(self._client._status())
+            async with self._client_lock:
+                status = await _async_resolve(self._client._status())
 
             if status and "t_amb" in status:
                 self.ambient_temp = status["t_amb"]
@@ -247,7 +333,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 201,
                 {"gatewayId": self.gateway_id}
             )
-            response = await _async_resolve(self._client._mqtt_send(payload))
+            async with self._client_lock:
+                response = await _async_resolve(self._client._mqtt_send(payload))
 
             if response and "result" in response:
                 result = response["result"]
@@ -284,7 +371,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             # This endpoint doesn't require gatewayId in the payload
             url = self._client.url_base + "hes-gateway/terminal/tou/getTouDispatchDetail"
             _LOGGER.info("Fetching TOU schedule from API...")
-            response = await _async_resolve(self._client._get(url, None))
+            async with self._client_lock:
+                response = await _async_resolve(self._client._get(url, None))
 
             if response and "result" in response:
                 self.tou_schedule = response["result"]
@@ -542,10 +630,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                result = await self.hass.async_add_executor_job(
-                    self._client.set_mode, mode
-                )
-                await _async_resolve(result)
+                async with self._client_lock:
+                    result = await self.hass.async_add_executor_job(
+                        self._client.set_mode, mode
+                    )
+                    await _async_resolve(result)
                 # Success! Request immediate refresh to get updated data
                 await self.async_request_refresh()
 
@@ -582,10 +671,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                result = await self.hass.async_add_executor_job(
-                    self._client.set_smart_switch_state, switch_id, state
-                )
-                await _async_resolve(result)
+                async with self._client_lock:
+                    result = await self.hass.async_add_executor_job(
+                        self._client.set_smart_switch_state, switch_id, state
+                    )
+                    await _async_resolve(result)
                 # Success! Request immediate refresh
                 await self.async_request_refresh()
 
