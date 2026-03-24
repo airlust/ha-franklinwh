@@ -630,11 +630,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
+                # set_mode is async, await it directly (not via executor)
                 async with self._client_lock:
-                    result = await self.hass.async_add_executor_job(
-                        self._client.set_mode, mode
-                    )
-                    await _async_resolve(result)
+                    await _async_resolve(self._client.set_mode(mode))
                 # Success! Request immediate refresh to get updated data
                 await self.async_request_refresh()
 
@@ -671,11 +669,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
         for attempt in range(MAX_RETRIES + 1):
             try:
+                # set_smart_switch_state is async, await it directly (not via executor)
                 async with self._client_lock:
-                    result = await self.hass.async_add_executor_job(
-                        self._client.set_smart_switch_state, switch_id, state
-                    )
-                    await _async_resolve(result)
+                    await _async_resolve(self._client.set_smart_switch_state(switch_id, state))
                 # Success! Request immediate refresh
                 await self.async_request_refresh()
 

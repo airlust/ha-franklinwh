@@ -83,7 +83,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 6. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
 
-7. **Async/Await Pattern**: The franklinwh library uses async methods (`async def get_stats()`, `async def _switch_status()`, etc.). These MUST be awaited directly, not wrapped in `async_add_executor_job()`. Only sync methods like `set_mode()` should use the executor. Incorrect usage causes "'coroutine' object has no attribute" errors.
+7. **Async/Await Pattern**: The franklinwh library methods are ALL async (`async def get_stats()`, `async def set_mode()`, `async def _switch_status()`, etc.) except for `__init__`, `next_snno`, and `_build_payload`. All async methods MUST be awaited directly, NOT wrapped in `async_add_executor_job()`. Using the executor with async methods causes deadlocks (blocking the event loop while waiting for the executor thread which is waiting for the event loop).
 
 8. **Coordinator Properties**: The coordinator exposes calculated properties:
    - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
