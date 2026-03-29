@@ -106,10 +106,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
     async def _ensure_client(self) -> None:
         """Ensure client is initialized."""
         if self._client is None:
-            # Client creation does SSL setup, run in executor to avoid blocking
-            self._client = await self.hass.async_add_executor_job(
-                Client, self._token_fetcher, self.gateway_id
-            )
+            # Create client directly - do NOT use executor as Client creates
+            # an httpx.AsyncClient that must be bound to the main event loop
+            self._client = Client(self._token_fetcher, self.gateway_id)
 
     def _set_update_interval(self, new_interval: timedelta, reason: str) -> None:
         """Update coordinator polling interval (adaptive backoff)."""
