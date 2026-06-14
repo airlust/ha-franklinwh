@@ -53,6 +53,8 @@ MODE_VALUE_MAP = {
     161804: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
     130849: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
     111374: MODE_BACKUP,            # Customized Emergency Backup
+    # Additional customized mode (observed on aGate2; see issue #6)
+    21312: MODE_SELF_CONSUMPTION,
 }
 
 
@@ -261,13 +263,17 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         self.current_mode = MODE_VALUE_MAP[raw_mode]
                         _LOGGER.debug("Mapped mode %s to %s", raw_mode, self.current_mode)
                     else:
-                        # Unknown mode - default to time_of_use as a safe fallback
+                        # Unknown mode - surface as "unknown" rather than silently
+                        # masquerading as Time-of-Use. TOU is a real operational
+                        # mode, so a silent fallback hides mis-mapping for weeks.
+                        # See issue #6 — leaving current_mode=None makes any new
+                        # unmapped runingMode value immediately visible in HA.
                         _LOGGER.warning(
-                            "Unknown mode value %s from gateway. Treating as time_of_use. "
+                            "Unknown mode value %s from gateway. Setting state to unknown. "
                             "Please report this to https://github.com/richo/franklinwh-python/issues",
                             raw_mode
                         )
-                        self.current_mode = MODE_TIME_OF_USE
+                        self.current_mode = None
 
                     if attempt > 0:
                         _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
