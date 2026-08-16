@@ -25,6 +25,20 @@ _LOGGER = logging.getLogger(__name__)
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
 
+# Backend conditions that are worth retrying rather than failing on. Defined once
+# so every fetch that shares the update cycle treats them identically — a fetch
+# with its own narrower tuple silently loses the retry/backoff/stale-data
+# handling the rest of the cycle gets.
+TRANSIENT_ERRORS = (
+    DeviceTimeoutException,
+    GatewayOfflineException,
+    # get_stats() raises this when the backend returns HTTP 200 with
+    # runtimeData: null — a transient backend condition, not a real failure.
+    InvalidDataException,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+)
+
 # Per-attempt retry delays for the main stats refresh
 UPDATE_RETRY_DELAYS = [5, 15]  # seconds between update retries
 
@@ -183,7 +197,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 async with self._client_lock:
                     stats = await _async_resolve(self._client.get_stats())
 
-                # Fetch current mode with same retry logic as stats
+                # Fetch current mode. Shares this loop's retry/backoff/stale-data
+                # handling rather than having its own.
                 await self._fetch_current_mode()
 
                 # Fetch charging power limited status
@@ -209,7 +224,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 return stats
 
-            except (DeviceTimeoutException, GatewayOfflineException, InvalidDataException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
+            except TRANSIENT_ERRORS as err:
                 last_error = err
 
                 # If we have retries left, wait and try again
@@ -273,8 +288,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         Fetched fresh on each update cycle, like every other value the cycle
         retrieves.
 
-        Returns None if the mode can't be resolved, leaving the caller to surface
-        the mode as unknown rather than guess at it.
+        Transient errors propagate, so the caller's retry and stale-data handling
+        applies to the mode exactly as it does to stats: a blip keeps the last known
+        mode, and a sustained outage takes the mode unavailable along with
+        everything else. Returns None only when the gateway answered but the
+        response could not be resolved to a known mode.
         """
         if self._client is None:
             return None
@@ -285,7 +303,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 response = await _async_resolve(
                     self._client._post(url, None, {"showType": 1})
                 )
-        except (DeviceTimeoutException, GatewayOfflineException):
+        except TRANSIENT_ERRORS:
             raise
         except Exception as err:
             _LOGGER.debug("Could not fetch TOU profile list: %s", err)
@@ -348,75 +366,55 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         against the gateway's TOU profile list.
 
         """
-        last_error = None
+        try:
+            # Call _switch_status() directly to get raw mode value
+            # This avoids the KeyError that get_mode() raises for unknown modes
+            # Note: _switch_status might be async, await it directly
+            async with self._client_lock:
+                status = await _async_resolve(self._client._switch_status())
 
-        for attempt in range(MAX_RETRIES + 1):
-            try:
-                # Call _switch_status() directly to get raw mode value
-                # This avoids the KeyError that get_mode() raises for unknown modes
-                # Note: _switch_status might be async, await it directly
-                async with self._client_lock:
-                    status = await _async_resolve(self._client._switch_status())
-
-                if not status or "runingMode" not in status:
-                    _LOGGER.warning("_switch_status() returned None or missing runingMode")
-                    self.current_mode = None
-                    self.current_mode_name = None
-                    return
-
-                raw_mode = status["runingMode"]
-                _LOGGER.debug("Fetched raw mode value: %s", raw_mode)
-
-                # Ask the gateway what this mode is, rather than consulting a table
-                # of per-account ids that can never be complete.
-                resolved = await self._resolve_mode_from_tou_list(raw_mode)
-
-                if resolved is not None:
-                    self.current_mode = resolved
-                else:
-                    # Surface as "unknown" rather than guessing. A plausible-but-wrong
-                    # mode (Time-of-Use is a real operational mode) hides the problem
-                    # for weeks; see issue #6.
-                    _LOGGER.warning(
-                        "Could not determine mode for runingMode %s from the "
-                        "gateway's TOU profile list. Setting state to unknown. "
-                        "Please report this to "
-                        "https://github.com/airlust/ha-franklinwh/issues",
-                        raw_mode
-                    )
-                    self.current_mode = None
-                    self.current_mode_name = None
-
-                if attempt > 0:
-                    _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
-                return
-
-            except (DeviceTimeoutException, GatewayOfflineException) as err:
-                last_error = err
-
-                if attempt < MAX_RETRIES:
-                    _LOGGER.warning(
-                        "Timeout fetching mode (attempt %d/%d): %s. Retrying in %d seconds...",
-                        attempt + 1,
-                        MAX_RETRIES + 1,
-                        err,
-                        RETRY_DELAY,
-                    )
-                    await asyncio.sleep(RETRY_DELAY)
-                    continue
-
-                # Out of retries - log but don't fail the entire update
-                _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
+            if not status or "runingMode" not in status:
+                _LOGGER.warning("_switch_status() returned None or missing runingMode")
                 self.current_mode = None
                 self.current_mode_name = None
                 return
 
-            except Exception as mode_err:
-                # Non-retryable error - log but don't fail the entire update
-                _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
+            raw_mode = status["runingMode"]
+            _LOGGER.debug("Fetched raw mode value: %s", raw_mode)
+
+            # Ask the gateway what this mode is, rather than consulting a table of
+            # per-account ids that can never be complete.
+            resolved = await self._resolve_mode_from_tou_list(raw_mode)
+
+            if resolved is not None:
+                self.current_mode = resolved
+            else:
+                # Surface as "unknown" rather than guessing. A plausible-but-wrong
+                # mode (Time-of-Use is a real operational mode) hides the problem
+                # for weeks; see issue #6.
+                _LOGGER.warning(
+                    "Could not determine mode for runingMode %s from the "
+                    "gateway's TOU profile list. Setting state to unknown. "
+                    "Please report this to "
+                    "https://github.com/airlust/ha-franklinwh/issues",
+                    raw_mode
+                )
                 self.current_mode = None
                 self.current_mode_name = None
-                return
+
+        except TRANSIENT_ERRORS:
+            # Let the update cycle handle these: it retries, backs off, and serves
+            # the previous values while the backend recovers. Swallowing them here
+            # would drop the mode to "unknown" on a blip the sensors ride out —
+            # keep the last known mode instead of clearing it.
+            _LOGGER.debug("Transient error fetching mode; keeping last known value")
+            raise
+
+        except Exception as mode_err:
+            # Non-retryable error - log but don't fail the entire update
+            _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
+            self.current_mode = None
+            self.current_mode_name = None
 
     async def _fetch_battery_capacity(self) -> None:
         """Fetch total usable battery capacity from the gateway, once.

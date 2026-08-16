@@ -12,7 +12,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Core Components
 
-- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API on `UPDATE_INTERVAL`. Implements retry logic for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
+- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API on `UPDATE_INTERVAL`. A single retry loop in `_async_update_data()` covers everything the cycle fetches — retries on `TRANSIENT_ERRORS`, applies adaptive backoff, then serves cached values for up to `MAX_STALE_CYCLES` before entities go unavailable. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
 - **Platforms**: The integration implements five Home Assistant platforms:
   - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), charging rate prediction sensors (current charge rate, time to full charge), and TOU rate sensors (current period, current rate, next period start, utility company, rate plan) - 22 sensors total
@@ -50,11 +50,11 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Error Handling
 
-The coordinator implements retry logic specifically for:
-- `DeviceTimeoutException`: Gateway didn't respond in time
-- `GatewayOfflineException`: Gateway is offline
+Transient backend conditions are listed once in `TRANSIENT_ERRORS` (`coordinator.py`): `DeviceTimeoutException`, `GatewayOfflineException`, and the httpx read/connect timeouts. Add to that tuple rather than to an individual `except` clause, so every fetch sharing the update cycle keeps the same behavior.
 
-Both stats fetching (`_async_update_data`) and mode fetching (`_fetch_current_mode`) have independent retry logic.
+`_async_update_data()` owns the only retry loop. It retries (`MAX_RETRIES`, `UPDATE_RETRY_DELAYS`), applies adaptive backoff, and then serves cached values for up to `MAX_STALE_CYCLES` before marking entities unavailable.
+
+`_fetch_current_mode()` deliberately has **no** retry loop of its own — it runs inside that one and re-raises transient errors for it to handle. Do not give it one: it previously had independent retries and set `current_mode = None` on failure, which meant a brief backend blip that the power sensors rode out silently dropped the operating mode to "unknown". The mode now stays available exactly as long as the sensors do.
 
 Other exceptions (like authentication errors) are not retried and immediately fail the update.
 
@@ -111,7 +111,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 - **Domain**: `franklinwh`
 - **Update Interval**: 30 seconds (`UPDATE_INTERVAL`)
-- **Retry Configuration**: `MAX_RETRIES = 2`, `RETRY_DELAY = 3` seconds
+- **Retry Configuration**: `MAX_RETRIES = 2`, `UPDATE_RETRY_DELAYS = [5, 15]` seconds; `MAX_STALE_CYCLES = 10` cycles of cached data before entities go unavailable
 - **Required Config**: `CONF_EMAIL`, `CONF_PASSWORD`, `CONF_GATEWAY_ID`
 - **Mode Keys**: Must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`)
 - **Mode Enum**: `WORK_MODE_TO_KEY` maps the gateway's `workMode` (1, 2, 3) to those keys

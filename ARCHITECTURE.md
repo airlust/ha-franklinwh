@@ -287,6 +287,37 @@ gateway and reads that enum; it keeps no table of ids at all.
         └──────────────────────────────────┘
 ```
 
+### Availability: the mode is treated like the stats
+
+The TOU profile list is fetched fresh on every update cycle, with no caching of its
+own. It is one more value the cycle retrieves, so it inherits the coordinator's
+existing machinery rather than duplicating any of it:
+
+| Concern | Mechanism |
+|---|---|
+| Retry on transient failure | `_async_update_data()`'s loop (`MAX_RETRIES`, `UPDATE_RETRY_DELAYS`) |
+| Reduce polling during an outage | Adaptive backoff, up to `MAX_BACKOFF_INTERVAL` |
+| Survive brief backend blips | Last known values served for up to `MAX_STALE_CYCLES` |
+
+`_fetch_current_mode()` therefore has **no retry loop of its own**. It re-raises
+transient errors so the update cycle handles them, which is what keeps the mode
+available: previously it swallowed those errors and set `current_mode = None`, so a
+blip that the power sensors rode out silently dropped the operating mode to
+"unknown". A gateway that answers `get_stats()` but times out on `_switch_status()`
+is the common case, and it used to produce exactly that split.
+
+The cost of no caching is one extra API call per poll — about +20% on a base of
+five calls, on the more reliable of the two paths involved (`getGatewayTouListV2`
+is a plain cloud read, whereas `_switch_status()` needs the physical gateway to
+answer over MQTT). Adaptive backoff makes that self-limiting: during an outage the
+interval stretches and the call volume falls. In exchange, a mode changed in the
+app appears on the next poll rather than after a cache expiry.
+
+Note that no cache would be safe here anyway. On a gateway whose `runingMode` does
+not match a profile id, `runingMode` reads the same value in every mode — so
+caching "what that value means" pins the display to whichever mode happened to be
+active when the cache was filled.
+
 ## Entity Availability Logic
 
 ```
@@ -373,10 +404,13 @@ custom_components/franklinwh/
 ┌─────────────────────────────────────────────────────────────────┐
 │  Error Type                  │  Handling Strategy               │
 ├──────────────────────────────┼──────────────────────────────────┤
-│  DeviceTimeoutException      │  • Retry up to 3 times           │
-│  GatewayOfflineException     │  • Wait 3s between retries       │
-│                              │  • Log warnings                  │
-│                              │  • Fail update after max retries │
+│  TRANSIENT_ERRORS            │  • Retry up to 3 times           │
+│  (DeviceTimeout, Gateway-    │  • Wait 5s then 15s              │
+│   Offline, httpx timeouts)   │  • Log warnings                  │
+│                              │  • Then serve cached values for  │
+│                              │    up to MAX_STALE_CYCLES        │
+│                              │  • Applies to stats AND mode:    │
+│                              │    both survive a blip together  │
 ├──────────────────────────────┼──────────────────────────────────┤
 │  Mode unresolvable, gateway  │  • Log warning with value        │
 │  reachable (e.g. a mode      │  • Set current_mode = None       │
@@ -431,7 +465,10 @@ custom_components/franklinwh/
 
 ### 4. **Retry Logic**
 - Transient network issues are retried automatically
-- Different handling for critical (stats) vs optional (mode) data
+- **The same handling for stats and mode.** They previously diverged — the mode had
+  its own retry loop with different delays, no backoff, and no stale-data grace, so
+  a blip the sensors rode out dropped the mode to "unknown". The mode now shares
+  the update cycle's retry, backoff and cached-value handling
 - User sees fewer "unavailable" states
 
 ### 5. **Pure Async Pattern**
