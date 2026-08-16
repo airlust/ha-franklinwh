@@ -17,7 +17,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 
-from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_BACKUP
+from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, WORK_MODE_TO_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,25 +53,23 @@ BATTERY_FULL_SOC = 99.0
 # any remaining capacity divides out to hours that bear no relation to reality.
 MIN_MEANINGFUL_CHARGE_RATE = 0.1
 
-# Map numeric mode values from API to our mode keys
-# The franklinwh library only knows about standard modes: 9322, 9323, 9324
-# but gateways can return different values for customized modes
-MODE_VALUE_MAP = {
-    # Standard modes
-    9322: MODE_TIME_OF_USE,
-    9323: MODE_SELF_CONSUMPTION,
-    9324: MODE_BACKUP,
-    # Customized modes (observed on user's gateway)
-    113349: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
-    117082: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
-    46540: MODE_BACKUP,              # Customized Emergency Backup
-    # Customized modes (observed on user's aHub)
-    161804: MODE_TIME_OF_USE,       # E-TOU-C (customized Time of Use)
-    130849: MODE_SELF_CONSUMPTION,  # Customized Self Consumption
-    111374: MODE_BACKUP,            # Customized Emergency Backup
-    # Additional customized mode (observed on aGate2; see issue #6)
-    21312: MODE_SELF_CONSUMPTION,
-}
+# NOTE: there is deliberately no table of runingMode values here.
+#
+# Earlier versions carried one, growing an entry per bug report (9322/9323/9324
+# plus 113349, 117082, 46540, 161804, 130849, 111374, 21312, ...). Those numbers
+# are per-account database ids for TOU profile rows, not protocol constants: the
+# same account reports different ids for the same mode on two different gateways,
+# and ids from separate accounts interleave numerically. A table of them can only
+# ever help the handful of users who reported theirs.
+#
+# It was also actively harmful. Because an unrecognized workMode and a failed
+# request both mean "could not resolve", a table consulted on failure will answer
+# a *new* mode with whatever that id previously meant — the silent mis-mapping
+# issue #6 was filed about. And it only applied during an outage, when every
+# other entity is showing cached-or-unavailable anyway.
+#
+# The mode is resolved from the gateway's own TOU profile list; if that can't be
+# reached, the mode goes unavailable along with everything else.
 
 
 async def _async_resolve(value: Any) -> Any:
@@ -114,6 +112,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         # requests (which can trigger token/auth edge cases).
         self._client_lock = asyncio.Lock()
         self.current_mode: str | None = None
+        # Name the gateway gives the active profile, e.g. "EV2A" or "Self-Consumption".
+        self.current_mode_name: str | None = None
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
         # kWh. Replaced with the gateway's reported total on the first update; see
@@ -261,11 +261,92 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         # Should never reach here, but just in case
         raise UpdateFailed(f"Failed to update data: {last_error}") from last_error
 
-    async def _fetch_current_mode(self) -> None:
-        """Fetch current operating mode with retry logic.
+    async def _resolve_mode_from_tou_list(self, raw_mode: int) -> str | None:
+        """Resolve a runingMode value via the gateway's own TOU profile list.
 
-        Uses _switch_status() directly instead of get_mode() to avoid
-        KeyError when gateway returns unsupported mode values.
+        getGatewayTouListV2 returns every profile on the account with the stable
+        workMode enum attached, plus currendId naming the active one. The profile
+        ids themselves are per-account database keys and differ even between two
+        gateways on the same account, but workMode does not — which is what makes
+        this work on any account without per-user constants.
+
+        Fetched fresh on each update cycle, like every other value the cycle
+        retrieves.
+
+        Returns None if the mode can't be resolved, leaving the caller to surface
+        the mode as unknown rather than guess at it.
+        """
+        if self._client is None:
+            return None
+
+        try:
+            url = self._client.url_base + "hes-gateway/terminal/tou/getGatewayTouListV2"
+            async with self._client_lock:
+                response = await _async_resolve(
+                    self._client._post(url, None, {"showType": 1})
+                )
+        except (DeviceTimeoutException, GatewayOfflineException):
+            raise
+        except Exception as err:
+            _LOGGER.debug("Could not fetch TOU profile list: %s", err)
+            return None
+
+        result = (response or {}).get("result") or {}
+        profiles = {
+            profile["id"]: profile
+            for profile in result.get("list") or []
+            if profile.get("id") is not None
+        }
+        if not profiles:
+            _LOGGER.debug("TOU profile list contained no usable profiles")
+            return None
+
+        # runingMode is the active profile's id on most gateways, but not all:
+        # an observed aHub reports a runingMode that matches none of its profile
+        # ids. currendId is the gateway's own statement of what's active, so it
+        # settles the cases where runingMode doesn't match any profile.
+        active_id = raw_mode if raw_mode in profiles else result.get("currendId")
+        profile = profiles.get(active_id)
+        if profile is None:
+            _LOGGER.debug(
+                "Neither runingMode %s nor currendId %s matched a profile in %s",
+                raw_mode,
+                result.get("currendId"),
+                sorted(profiles),
+            )
+            return None
+
+        work_mode = profile.get("workMode")
+        mode_key = WORK_MODE_TO_KEY.get(work_mode)
+        if mode_key is None:
+            _LOGGER.warning(
+                "Gateway profile %r (id %s) has unrecognized workMode %s. "
+                "Setting state to unknown. Please report this to "
+                "https://github.com/airlust/ha-franklinwh/issues",
+                profile.get("name"),
+                profile.get("id"),
+                work_mode,
+            )
+            return None
+
+        self.current_mode_name = profile.get("name")
+        _LOGGER.debug(
+            "Resolved runingMode %s via TOU list: id=%s name=%r workMode=%s -> %s",
+            raw_mode,
+            profile.get("id"),
+            self.current_mode_name,
+            work_mode,
+            mode_key,
+        )
+        return mode_key
+
+    async def _fetch_current_mode(self) -> None:
+        """Fetch the current operating mode.
+
+        Uses _switch_status() directly instead of get_mode() to avoid KeyError when
+        the gateway returns unsupported mode values, then resolves the raw value
+        against the gateway's TOU profile list.
+
         """
         last_error = None
 
@@ -277,34 +358,38 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 async with self._client_lock:
                     status = await _async_resolve(self._client._switch_status())
 
-                if status and "runingMode" in status:
-                    raw_mode = status["runingMode"]
-                    _LOGGER.debug("Fetched raw mode value: %s", raw_mode)
-
-                    # Map the numeric mode to our mode key, with fallback for unknown modes
-                    if raw_mode in MODE_VALUE_MAP:
-                        self.current_mode = MODE_VALUE_MAP[raw_mode]
-                        _LOGGER.debug("Mapped mode %s to %s", raw_mode, self.current_mode)
-                    else:
-                        # Unknown mode - surface as "unknown" rather than silently
-                        # masquerading as Time-of-Use. TOU is a real operational
-                        # mode, so a silent fallback hides mis-mapping for weeks.
-                        # See issue #6 — leaving current_mode=None makes any new
-                        # unmapped runingMode value immediately visible in HA.
-                        _LOGGER.warning(
-                            "Unknown mode value %s from gateway. Setting state to unknown. "
-                            "Please report this to https://github.com/richo/franklinwh-python/issues",
-                            raw_mode
-                        )
-                        self.current_mode = None
-
-                    if attempt > 0:
-                        _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
-                    return
-                else:
+                if not status or "runingMode" not in status:
                     _LOGGER.warning("_switch_status() returned None or missing runingMode")
                     self.current_mode = None
+                    self.current_mode_name = None
                     return
+
+                raw_mode = status["runingMode"]
+                _LOGGER.debug("Fetched raw mode value: %s", raw_mode)
+
+                # Ask the gateway what this mode is, rather than consulting a table
+                # of per-account ids that can never be complete.
+                resolved = await self._resolve_mode_from_tou_list(raw_mode)
+
+                if resolved is not None:
+                    self.current_mode = resolved
+                else:
+                    # Surface as "unknown" rather than guessing. A plausible-but-wrong
+                    # mode (Time-of-Use is a real operational mode) hides the problem
+                    # for weeks; see issue #6.
+                    _LOGGER.warning(
+                        "Could not determine mode for runingMode %s from the "
+                        "gateway's TOU profile list. Setting state to unknown. "
+                        "Please report this to "
+                        "https://github.com/airlust/ha-franklinwh/issues",
+                        raw_mode
+                    )
+                    self.current_mode = None
+                    self.current_mode_name = None
+
+                if attempt > 0:
+                    _LOGGER.info("Successfully fetched mode after %d retry(ies)", attempt)
+                return
 
             except (DeviceTimeoutException, GatewayOfflineException) as err:
                 last_error = err
@@ -323,12 +408,14 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 # Out of retries - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch mode after %d attempts: %s. Mode will be unavailable.", MAX_RETRIES + 1, err)
                 self.current_mode = None
+                self.current_mode_name = None
                 return
 
             except Exception as mode_err:
                 # Non-retryable error - log but don't fail the entire update
                 _LOGGER.error("Failed to fetch current mode: %s. Mode will be unavailable.", mode_err, exc_info=True)
                 self.current_mode = None
+                self.current_mode_name = None
                 return
 
     async def _fetch_battery_capacity(self) -> None:

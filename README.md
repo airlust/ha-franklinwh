@@ -93,6 +93,9 @@ This custom integration allows you to monitor and control your FranklinWH Whole 
   - **Self Consumption**: Maximize use of solar energy
   - **Backup**: Reserve battery for outages
 
+  The entity also exposes a `profile_name` attribute holding the gateway's own
+  name for the active profile, which is usually the rate plan (e.g. `EV2A`).
+
 #### Smart Circuits
 - `switch.franklinwh_XXXXXX_circuit_X` - Control individual smart circuits (if equipped)
 
@@ -132,7 +135,6 @@ Smart circuit switches will only appear if your FranklinWH system has smart circ
 
 ## Known Limitations
 
-- **Current Operating Mode**: The integration cannot currently detect which operating mode is active; it only allows setting the mode
 - **Smart Circuits**: The smart circuit implementation is basic and may need adjustments based on your specific system configuration
 - **SOC Parameter**: When changing modes, the state-of-charge parameter is set to 100% by default
 

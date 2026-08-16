@@ -12,7 +12,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Core Components
 
-- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 60 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
+- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API on `UPDATE_INTERVAL`. Implements retry logic for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
 - **Platforms**: The integration implements five Home Assistant platforms:
   - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), charging rate prediction sensors (current charge rate, time to full charge), and TOU rate sensors (current period, current rate, next period start, utility company, rate plan) - 22 sensors total
@@ -27,7 +27,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 1. **Authentication**: `TokenFetcher(email, password)` → `Client(token_fetcher, gateway_id)`
 2. **Data Fetching**: Coordinator calls `await client.get_stats()` every 60 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
-3. **Mode Detection**: Coordinator calls `await client._switch_status()` to get raw mode value, maps it via `MODE_VALUE_MAP` → Stored as `coordinator.current_mode`
+3. **Mode Detection**: Coordinator calls `await client._switch_status()` for the raw `runingMode`, then resolves it against the gateway's TOU profile list (`getGatewayTouListV2`) and reads that profile's `workMode` → Stored as `coordinator.current_mode`, with the profile's own name in `coordinator.current_mode_name`
 4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
 5. **Ambient Temperature**: Coordinator calls `await client._status()` to get ambient temperature from gateway → Stored as `coordinator.ambient_temp`
 6. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
@@ -54,7 +54,7 @@ The coordinator implements retry logic specifically for:
 - `DeviceTimeoutException`: Gateway didn't respond in time
 - `GatewayOfflineException`: Gateway is offline
 
-Both stats fetching (`_async_update_data`) and mode fetching (`_fetch_current_mode`) have independent retry logic. If mode fetching fails after all retries, it logs an error and sets `current_mode = None` (making the select entity unavailable) but doesn't fail the entire coordinator update. This ensures sensor data remains available even if mode detection temporarily fails.
+Both stats fetching (`_async_update_data`) and mode fetching (`_fetch_current_mode`) have independent retry logic.
 
 Other exceptions (like authentication errors) are not retried and immediately fail the update.
 
@@ -72,7 +72,9 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 ## Key Implementation Notes
 
-1. **Operating Mode Handling**: The integration calls `_switch_status()` directly to get the raw `runingMode` value from the gateway, then maps it using `MODE_VALUE_MAP` in coordinator.py. This bypasses the library's `get_mode()` method which only supports three standard modes (9322, 9323, 9324) and throws KeyError for customized modes like 113349 (E-TOU-C customized). Unknown modes default to time_of_use with a warning.
+1. **Operating Mode Handling**: The integration calls `_switch_status()` directly for the raw `runingMode`, bypassing the library's `get_mode()`, which only knows 9322/9323/9324 and raises KeyError otherwise. It then resolves the value via `_resolve_mode_from_tou_list()`: fetch `getGatewayTouListV2`, find the active profile (by `runingMode`, or by `currendId` when `runingMode` isn't a profile id), and read that profile's `workMode` from `WORK_MODE_TO_KEY`.
+
+   **Do not add a table of `runingMode` → mode constants.** One existed and was removed. Those numbers are per-account database ids for TOU profile rows, not protocol constants — the same account reports different ids for the same mode on different gateways, and ids from different accounts interleave numerically. Such a table only ever helps users who reported their own values, and it is actively harmful: since an unrecognized `workMode` and a failed request both mean "unresolved", a table consulted at that point answers a *brand-new* mode with whatever that id previously meant. That is the silent mis-mapping of issue #6. When the mode can't be resolved, set `current_mode = None` and log loudly.
 
 2. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
 
@@ -108,10 +110,11 @@ This is a Home Assistant custom component with no build process. Testing is done
 ## Constants and Configuration
 
 - **Domain**: `franklinwh`
-- **Update Interval**: 60 seconds (`UPDATE_INTERVAL`)
+- **Update Interval**: 30 seconds (`UPDATE_INTERVAL`)
 - **Retry Configuration**: `MAX_RETRIES = 2`, `RETRY_DELAY = 3` seconds
 - **Required Config**: `CONF_EMAIL`, `CONF_PASSWORD`, `CONF_GATEWAY_ID`
 - **Mode Keys**: Must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`)
+- **Mode Enum**: `WORK_MODE_TO_KEY` maps the gateway's `workMode` (1, 2, 3) to those keys
 - **Battery Capacity**: read from the gateway by summing `ratedCapacity` across installed aPower units (`obtainApowersInfo`). `DEFAULT_BATTERY_CAPACITY = 15.0` kWh covers one unit and is only used until the first successful fetch. Do not reintroduce a hardcoded total: installations have more than one aPower, and units are not all the same size.
 
 ## Dependencies

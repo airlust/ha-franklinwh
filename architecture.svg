@@ -169,20 +169,19 @@
   <text class="body-text" x="720" y="565" text-anchor="start">• current_charge_rate - From battery_use</text>
   <text class="body-text" x="720" y="583" text-anchor="start">• time_to_full_charge - Estimated hours</text>
 
-  <!-- Mode Value Map Box -->
+  <!-- Mode Resolution Box -->
   <rect class="highlight-box" x="1100" y="435" width="180" height="220"/>
-  <text class="subtitle-text" x="1110" y="455" text-anchor="start">MODE_VALUE_MAP</text>
-  <text class="small-text" x="1110" y="475" text-anchor="start">Standard modes:</text>
-  <text class="code-text" x="1120" y="490" text-anchor="start">9322 → TOU</text>
-  <text class="code-text" x="1120" y="505" text-anchor="start">9323 → SELF</text>
-  <text class="code-text" x="1120" y="520" text-anchor="start">9324 → BACKUP</text>
-  <text class="small-text" x="1110" y="540" text-anchor="start">Custom modes:</text>
-  <text class="code-text" x="1120" y="555" text-anchor="start">113349 → TOU</text>
-  <text class="code-text" x="1120" y="570" text-anchor="start">117082 → SELF</text>
-  <text class="code-text" x="1120" y="585" text-anchor="start">46540 → BACKUP</text>
-  <text class="small-text" x="1110" y="605" text-anchor="start">Unknown:</text>
-  <text class="code-text" x="1120" y="620" text-anchor="start">other → TOU</text>
-  <text class="small-text" x="1120" y="640" text-anchor="start">(with warning)</text>
+  <text class="subtitle-text" x="1110" y="455" text-anchor="start">Mode resolution</text>
+  <text class="small-text" x="1110" y="475" text-anchor="start">getGatewayTouListV2</text>
+  <text class="small-text" x="1110" y="492" text-anchor="start">→ profile workMode</text>
+  <text class="code-text" x="1120" y="510" text-anchor="start">1 → TOU</text>
+  <text class="code-text" x="1120" y="525" text-anchor="start">2 → SELF</text>
+  <text class="code-text" x="1120" y="540" text-anchor="start">3 → BACKUP</text>
+  <text class="small-text" x="1110" y="577" text-anchor="start">workMode is stable;</text>
+  <text class="small-text" x="1110" y="592" text-anchor="start">ids are per-account,</text>
+  <text class="small-text" x="1110" y="607" text-anchor="start">so no id table.</text>
+  <text class="small-text" x="1110" y="627" text-anchor="start">Outage → cached,</text>
+  <text class="small-text" x="1110" y="645" text-anchor="start">unresolved → unknown</text>
 
   <!-- Arrow to Platforms -->
   <path class="data-arrow" d="M 700 660 L 700 700"/>
@@ -229,11 +228,11 @@
   <!-- Select Platform -->
   <rect class="component-box" x="680" y="760" width="240" height="140"/>
   <text class="subtitle-text" x="800" y="785" text-anchor="middle">select.py</text>
-  <text class="body-text" x="695" y="820" text-anchor="start">Operating Mode</text>
-  <text class="small-text" x="705" y="840" text-anchor="start">Options:</text>
-  <text class="small-text" x="715" y="858" text-anchor="start">• Time of Use</text>
-  <text class="small-text" x="715" y="876" text-anchor="start">• Self Consumption</text>
-  <text class="small-text" x="715" y="894" text-anchor="start">• Emergency Backup</text>
+  <text class="body-text" x="695" y="815" text-anchor="start">Operating Mode</text>
+  <text class="small-text" x="705" y="833" text-anchor="start">Options:</text>
+  <text class="small-text" x="715" y="850" text-anchor="start">• Time of Use</text>
+  <text class="small-text" x="715" y="866" text-anchor="start">• Self Consumption</text>
+  <text class="small-text" x="715" y="882" text-anchor="start">• Emergency Backup</text>
 
   <!-- Switch Platform -->
   <rect class="component-box" x="940" y="760" width="240" height="140"/>
@@ -254,7 +253,7 @@
   <text class="body-text" x="435" y="1033" text-anchor="start">2. _fetch_current_mode()</text>
   <text class="small-text" x="455" y="1051" text-anchor="start">↓ await self._client._switch_status()</text>
   <text class="small-text" x="455" y="1066" text-anchor="start">Returns: runingMode (int), t_amb (float)</text>
-  <text class="small-text" x="455" y="1081" text-anchor="start">Maps mode via MODE_VALUE_MAP</text>
+  <text class="small-text" x="455" y="1081" text-anchor="start">Resolves via TOU profile list → workMode</text>
 
   <text class="body-text" x="435" y="1106" text-anchor="start">3. _fetch_charging_limited()</text>
   <text class="small-text" x="455" y="1124" text-anchor="start">↓ Gets BMS limiting status</text>
@@ -379,14 +378,14 @@
   <text class="body-text" x="140" y="2453" text-anchor="start">• All entities share same data source (coordinator.data)</text>
   <text class="body-text" x="140" y="2471" text-anchor="start">• Single 60-second update interval applies to all sensors</text>
 
-  <text class="subtitle-text" x="120" y="2500" text-anchor="start">2. Custom Mode Mapping</text>
-  <text class="body-text" x="140" y="2520" text-anchor="start">• Library only knows standard modes (9322, 9323, 9324)</text>
-  <text class="body-text" x="140" y="2538" text-anchor="start">• Integration adds custom mode support (113349, 117082, 46540)</text>
+  <text class="subtitle-text" x="120" y="2500" text-anchor="start">2. Mode Resolution via the Gateway, Not a Table</text>
+  <text class="body-text" x="140" y="2520" text-anchor="start">• runingMode values are per-account database ids, so no table can cover every account</text>
+  <text class="body-text" x="140" y="2538" text-anchor="start">• Resolve via getGatewayTouListV2 and read the profile's workMode (stable across accounts)</text>
   <text class="body-text" x="140" y="2556" text-anchor="start">• Uses _switch_status() directly to avoid KeyError from library's get_mode()</text>
 
   <text class="subtitle-text" x="120" y="2585" text-anchor="start">3. Graceful Degradation</text>
   <text class="body-text" x="140" y="2605" text-anchor="start">• Mode fetch failure doesn't break sensor updates</text>
-  <text class="body-text" x="140" y="2623" text-anchor="start">• Unknown modes default to safe value (TIME_OF_USE)</text>
+  <text class="body-text" x="140" y="2623" text-anchor="start">• Unresolvable modes show as unknown; never guessed (issue #6)</text>
   <text class="body-text" x="140" y="2641" text-anchor="start">• Mode selection works even when current mode cannot be determined</text>
 
   <text class="subtitle-text" x="700" y="2415" text-anchor="start">4. Pure Async Pattern</text>

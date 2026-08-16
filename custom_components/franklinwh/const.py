@@ -28,3 +28,12 @@ MODES: Final = {
     MODE_SELF_CONSUMPTION: "Self Consumption",
     MODE_BACKUP: "Backup",
 }
+
+# workMode is the gateway's stable mode enum. Unlike the TOU profile ids (which
+# are per-account database keys), these values are consistent across accounts,
+# so they are the reliable way to identify the active mode.
+WORK_MODE_TO_KEY: Final = {
+    1: MODE_TIME_OF_USE,
+    2: MODE_SELF_CONSUMPTION,
+    3: MODE_BACKUP,
+}

@@ -68,6 +68,18 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
         return None
 
     @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Expose the gateway's own name for the active profile.
+
+        The gateway names profiles after the rate plan they implement (e.g. "EV2A"),
+        which is more specific than the mode key it maps to.
+        """
+        name = self.coordinator.current_mode_name
+        if name:
+            return {"profile_name": name}
+        return None
+
+    @property
     def available(self) -> bool:
         """Return if entity is available."""
         # Allow mode selection even if we can't read the current mode

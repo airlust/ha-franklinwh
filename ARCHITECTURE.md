@@ -158,8 +158,8 @@
     │   use                │      │ • runingMode (int)   │  │ status       │
     │ • current.grid_use   │      │ • t_amb (float)      │  │              │
     │ • current.home_load  │      │                      │  │ Sets:        │
-    │ • current.battery_   │      │ Maps via:            │  │ coordinator. │
-    │   soc                │      │   MODE_VALUE_MAP     │  │ charging_    │
+    │ • current.battery_   │      │ Resolves via:        │  │ coordinator. │
+    │   soc                │      │   TOU profile list   │  │ charging_    │
     │ • current.grid_      │      │                      │  │ power_       │
     │   status             │      │ Sets:                │  │ limited      │
     │ • current.generator_ │      │ coordinator.         │  │              │
@@ -167,13 +167,17 @@
     │ • totals.solar       │      │ coordinator.         │
     │ • totals.battery_    │      │   ambient_temp       │
     │   charge/discharge   │      │                      │
-    │ • totals.grid_       │      │ Fallback for unknown:│
-    │   import/export      │      │   MODE_TIME_OF_USE   │
-    │ • totals.home_use    │      │                      │
-    │                      │      │ Known modes:         │
-    │ Stored in:           │      │ • 9322, 113349 → TOU │
-    │ coordinator.data     │      │ • 9323, 117082 → SELF│
-    └──────────────────────┘      │ • 9324, 46540 → BACKUP
+    │ • totals.grid_       │      │ Resolves via:        │
+    │   import/export      │      │  getGatewayTouListV2 │
+    │ • totals.home_use    │      │  → profile workMode  │
+    │                      │      │                      │
+    │ Stored in:           │      │ Sets:                │
+    │ coordinator.data     │      │ coordinator.         │
+    └──────────────────────┘      │   current_mode       │
+                                  │   current_mode_name  │
+                                  │                      │
+                                  │ Unresolved → None,   │
+                                  │ state shows unknown  │
                                   └──────────────────────┘
                                 │
                                 ▼
@@ -223,100 +227,64 @@
                     └────────────────────────┘
 ```
 
-## Mode Value Mapping
+## Mode Resolution
+
+The gateway identifies its active mode by a numeric `runingMode`. That number is
+**not** a stable constant: it is a per-account database id for a TOU profile row.
+The same account reports different ids for the same mode on two different
+gateways, and ids from separate accounts interleave numerically, which is what a
+row id from a shared sequence looks like. No table of such numbers can ever be
+complete.
+
+What *is* stable across accounts is `workMode`, the gateway's own mode enum, which
+`getGatewayTouListV2` returns alongside every profile. The integration asks the
+gateway and reads that enum; it keeps no table of ids at all.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  FranklinWH Gateway Reports                                     │
 └─────────────────────────────────────────────────────────────────┘
                             │
-                            │ runingMode (int)
+                            │ runingMode (int) — a per-account profile id
                             ▼
-            ┌──────────────────────────────────┐
-            │  MODE_VALUE_MAP (coordinator.py) │
-            │                                  │
-            │  Standard modes:                 │
-            │  • 9322  → MODE_TIME_OF_USE      │
-            │  • 9323  → MODE_SELF_CONSUMPTION │
-            │  • 9324  → MODE_BACKUP           │
-            │                                  │
-            │  Custom modes (user-specific):   │
-            │  • 113349 → MODE_TIME_OF_USE     │
-            │    (E-TOU-C customized)          │
-            │  • 117082 → MODE_SELF_CONSUMPTION│
-            │    (Customized Self Consumption) │
-            │  • 46540  → MODE_BACKUP          │
-            │    (Customized Emergency Backup) │
-            │                                  │
-            │  Unknown modes:                  │
-            │  • Any other → MODE_TIME_OF_USE  │
-            │    (with warning logged)         │
-            └──────────────────────────────────┘
+    ┌────────────────────────────────────────────────────────┐
+    │  _resolve_mode_from_tou_list()                         │
+    │                                                        │
+    │  GET hes-gateway/terminal/tou/getGatewayTouListV2      │
+    │    → list of profiles, each with id + workMode + name  │
+    │    → currendId names the active profile                │
+    │                                                        │
+    │  Match runingMode against the profile ids; if it does  │
+    │  not appear, use currendId. Then read that profile's   │
+    │  workMode:                                             │
+    │                                                        │
+    │    workMode 1 → MODE_TIME_OF_USE                       │
+    │    workMode 2 → MODE_SELF_CONSUMPTION                  │
+    │    workMode 3 → MODE_BACKUP                            │
+    │                                                        │
+    │  Needs no per-account constants, so it works on any    │
+    │  account without a code change.                        │
+    └────────────────────────────────────────────────────────┘
                             │
-                            ▼
-            ┌──────────────────────────────────┐
-            │  coordinator.current_mode        │
-            │  (string constant)               │
-            └──────────────────────────────────┘
-                            │
-                            ▼
-            ┌──────────────────────────────────┐
-            │  FranklinWHModeSelect entity     │
-            │  displays in Home Assistant UI   │
-            └──────────────────────────────────┘
-```
-
-## Async/Await Pattern
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Why We Use Direct Await (Not Executor)                         │
-└─────────────────────────────────────────────────────────────────┘
-
-The franklinwh library methods are ASYNC:
-
-┌─────────────────────────────────────────────────────────────────┐
-│  franklinwh Library                                             │
-│                                                                 │
-│  async def get_stats(self) -> Stats:                           │
-│      # MQTT communication (already async)                      │
-│      return await self._fetch_data()                           │
-│                                                                 │
-│  async def _switch_status(self) -> dict:                       │
-│      # MQTT communication (already async)                      │
-│      return await self._fetch_mode()                           │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            │ CORRECT USAGE
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  FranklinWHCoordinator                                          │
-│                                                                 │
-│  async def _async_update_data(self) -> Stats:                  │
-│      # Await async library methods directly                    │
-│      stats = await self._client.get_stats()                    │
-│      await self._fetch_current_mode()                          │
-│      return stats                                              │
-│                                                                 │
-│  async def _fetch_current_mode(self) -> None:                  │
-│      # Await async library methods directly                    │
-│      status = await self._client._switch_status()              │
-│      self.current_mode = self._map_mode(status)                │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  INCORRECT (Previous Implementation)                            │
-│                                                                 │
-│  async def _async_update_data(self) -> Stats:                  │
-│      # ❌ Using executor on async method returns coroutine     │
-│      stats = await self.hass.async_add_executor_job(           │
-│          self._client.get_stats  # Returns coroutine object!   │
-│      )                                                          │
-│      # Result: 'coroutine' object has no attribute 'current'   │
-└─────────────────────────────────────────────────────────────────┘
-
-Rule: If library method is "async def" → use "await"
-      If library method is "def" (sync) → use executor_job
+              ┌─────────────┼─────────────────┐
+         resolved      transient error    gateway answered,
+              │        (backend down)     mode unrecognized
+              │             │                     │
+              ▼             ▼                     ▼
+  ┌──────────────────────┐ ┌──────────────┐ ┌──────────────────────┐
+  │ coordinator.         │ │ Re-raised to │ │ current_mode = None  │
+  │   current_mode       │ │ the update   │ │ warning logged, HA   │
+  │   current_mode_name  │ │ cycle: keep  │ │ state shows unknown  │
+  │   (e.g. "EV2A")      │ │ last known,  │ │ (issue #6: never     │
+  └──────────────────────┘ │ then go      │ │ guess a real mode)   │
+              │            │ unavailable  │ └──────────────────────┘
+              │            └──────────────┘
+              ▼
+        ┌──────────────────────────────────┐
+        │  FranklinWHModeSelect entity     │
+        │  displays in Home Assistant UI   │
+        │  profile_name as an attribute    │
+        └──────────────────────────────────┘
 ```
 
 ## Entity Availability Logic
@@ -371,11 +339,12 @@ custom_components/franklinwh/
 ├── const.py                 # Constants
 │   ├── DOMAIN = "franklinwh"
 │   ├── UPDATE_INTERVAL = 60s
-│   └── Mode constants (MODE_TIME_OF_USE, etc.)
+│   ├── Mode constants (MODE_TIME_OF_USE, etc.)
+│   └── WORK_MODE_TO_KEY (gateway workMode enum → mode key)
 │
 ├── coordinator.py           # ⭐ Core data management
 │   ├── FranklinWHCoordinator
-│   ├── MODE_VALUE_MAP
+│   ├── _resolve_mode_from_tou_list() (mode lookup, no id table)
 │   ├── Retry logic (MAX_RETRIES=2, RETRY_DELAY=3s)
 │   └── Properties: current_charge_rate, time_to_full_charge
 │
@@ -409,10 +378,16 @@ custom_components/franklinwh/
 │                              │  • Log warnings                  │
 │                              │  • Fail update after max retries │
 ├──────────────────────────────┼──────────────────────────────────┤
-│  Unknown mode value          │  • Log warning with value        │
-│  (e.g., 113349)              │  • Default to MODE_TIME_OF_USE   │
-│                              │  • Continue operation            │
-│                              │  • Ask user to report to library │
+│  Mode unresolvable, gateway  │  • Log warning with value        │
+│  reachable (e.g. a mode      │  • Set current_mode = None       │
+│  newer than this release)    │    (HA state shows "unknown")    │
+│                              │  • Never guess a real mode:      │
+│                              │    see issue #6                  │
+│                              │  • Ask user to report it         │
+├──────────────────────────────┼──────────────────────────────────┤
+│  Unrecognized workMode       │  • Log warning with profile name │
+│                              │  • Set current_mode = None       │
+│                              │  • Ask user to report it         │
 ├──────────────────────────────┼──────────────────────────────────┤
 │  Mode fetch failure          │  • Log error                     │
 │                              │  • Set current_mode = None       │
@@ -435,14 +410,23 @@ custom_components/franklinwh/
 - All entities share the same data source
 - Update interval (60s) applies to all sensors
 
-### 2. **Custom Mode Mapping**
-- Library only knows standard modes (9322, 9323, 9324)
-- Integration maps custom modes (113349, 117082, 46540)
+### 2. **Mode Resolution via the Gateway, Not a Table**
+- `runingMode` values are per-account database ids, not constants, so a lookup
+  table can never cover every account
+- Resolve through `getGatewayTouListV2` and read the profile's `workMode`, which
+  is stable across accounts
+- **No id table is kept at all.** An earlier one grew an entry per bug report and
+  helped only the users who had reported theirs. It was also a hazard: because an
+  unrecognized `workMode` and a failed request both mean "unresolved", a table
+  consulted on failure answers a *new* mode with whatever that id used to mean —
+  the mis-mapping of issue #6
 - Uses `_switch_status()` to avoid KeyError from library's `get_mode()`
 
 ### 3. **Graceful Degradation**
 - Mode fetch failure doesn't break sensors
-- Unknown modes default to safe value (TOU)
+- Unresolvable modes set `current_mode = None` so the HA state reads "unknown";
+  they are never guessed at, since a wrong-but-plausible mode hides the problem
+  for weeks (issue #6)
 - Mode selection works even when current mode is unknown
 
 ### 4. **Retry Logic**
