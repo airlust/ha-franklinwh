@@ -319,10 +319,10 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             _LOGGER.debug("TOU profile list contained no usable profiles")
             return None
 
-        # runingMode is the active profile's id on most gateways, but not all:
-        # an observed aHub reports a runingMode that matches none of its profile
-        # ids. currendId is the gateway's own statement of what's active, so it
-        # settles the cases where runingMode doesn't match any profile.
+        # runingMode is the active profile's id on most gateways, but not all: an
+        # aHub running Smart Energy Dispatch reports a runingMode that matches none
+        # of its profile ids. currendId is the gateway's own statement of what's
+        # active, so it settles the cases where runingMode doesn't match.
         active_id = raw_mode if raw_mode in profiles else result.get("currendId")
         profile = profiles.get(active_id)
         if profile is None:
@@ -365,6 +365,12 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         the gateway returns unsupported mode values, then resolves the raw value
         against the gateway's TOU profile list.
 
+        Deliberately has no retry loop of its own. It runs inside
+        _async_update_data()'s loop, so transient errors are re-raised for that
+        loop to retry, back off, and — if the backend stays down — serve cached
+        values for. Retrying here as well would compound the two loops' attempts,
+        and clearing current_mode on failure would make the mode go unavailable
+        during blips that the sensors ride out.
         """
         try:
             # Call _switch_status() directly to get raw mode value
@@ -391,7 +397,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             else:
                 # Surface as "unknown" rather than guessing. A plausible-but-wrong
                 # mode (Time-of-Use is a real operational mode) hides the problem
-                # for weeks; see issue #6.
+                # for weeks; see issue #6. Leaving current_mode=None makes an
+                # unrecognized mode immediately visible instead.
                 _LOGGER.warning(
                     "Could not determine mode for runingMode %s from the "
                     "gateway's TOU profile list. Setting state to unknown. "

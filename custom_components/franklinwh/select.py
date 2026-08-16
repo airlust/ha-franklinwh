@@ -8,15 +8,28 @@ from franklinwh import Mode
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_GATEWAY_ID, DOMAIN, MODE_BACKUP, MODE_SELF_CONSUMPTION, MODE_TIME_OF_USE, MODES
+from .const import (
+    CONF_GATEWAY_ID,
+    DOMAIN,
+    MODE_BACKUP,
+    MODE_SELF_CONSUMPTION,
+    MODE_SMART_ENERGY_DISPATCH,
+    MODE_TIME_OF_USE,
+    MODES,
+)
 from .coordinator import FranklinWHCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Map our mode keys to the Mode class constructors
+# Map our mode keys to the Mode class constructors.
+#
+# Smart Energy Dispatch is deliberately absent: the franklinwh library's Mode
+# class provides no constructor for it, so the integration can report the mode
+# but not select it. It has to be set in the FranklinWH app.
 MODE_MAP = {
     MODE_TIME_OF_USE: Mode.time_of_use,
     MODE_SELF_CONSUMPTION: Mode.self_consumption,
@@ -88,6 +101,14 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
 
     async def async_select_option(self, option: str) -> None:
         """Change the operating mode."""
+        if option == MODE_SMART_ENERGY_DISPATCH:
+            # Raise rather than log: the dropdown would otherwise just snap back
+            # with no indication of why.
+            raise HomeAssistantError(
+                "Smart Energy Dispatch can only be enabled in the FranklinWH app. "
+                "The API offers no way to select it."
+            )
+
         if option not in MODE_MAP:
             _LOGGER.error("Invalid mode selected: %s", option)
             return

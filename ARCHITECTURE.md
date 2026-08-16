@@ -261,6 +261,7 @@ gateway and reads that enum; it keeps no table of ids at all.
     │    workMode 1 → MODE_TIME_OF_USE                       │
     │    workMode 2 → MODE_SELF_CONSUMPTION                  │
     │    workMode 3 → MODE_BACKUP                            │
+    │    workMode 7 → MODE_SMART_ENERGY_DISPATCH             │
     │                                                        │
     │  Needs no per-account constants, so it works on any    │
     │  account without a code change.                        │
@@ -318,6 +319,68 @@ not match a profile id, `runingMode` reads the same value in every mode — so
 caching "what that value means" pins the display to whichever mode happened to be
 active when the cache was filled.
 
+### Smart Energy Dispatch
+
+`workMode` 7 is the AI-assisted mode the FranklinWH app added in mid-2026. It is
+read-only here: the `franklinwh` library's `Mode` class has no constructor for it,
+so selecting it in Home Assistant raises an error directing the user to the app.
+Note that one observed aHub reports a `runingMode` for this mode that matches
+none of its profile ids, so the two disagree. That is exactly the case the
+`currendId` fallback above handles.
+
+## Async/Await Pattern
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Why We Use Direct Await (Not Executor)                         │
+└─────────────────────────────────────────────────────────────────┘
+
+The franklinwh library methods are ASYNC:
+
+┌─────────────────────────────────────────────────────────────────┐
+│  franklinwh Library                                             │
+│                                                                 │
+│  async def get_stats(self) -> Stats:                           │
+│      # MQTT communication (already async)                      │
+│      return await self._fetch_data()                           │
+│                                                                 │
+│  async def _switch_status(self) -> dict:                       │
+│      # MQTT communication (already async)                      │
+│      return await self._fetch_mode()                           │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            │ CORRECT USAGE
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  FranklinWHCoordinator                                          │
+│                                                                 │
+│  async def _async_update_data(self) -> Stats:                  │
+│      # Await async library methods directly                    │
+│      stats = await self._client.get_stats()                    │
+│      await self._fetch_current_mode()                          │
+│      return stats                                              │
+│                                                                 │
+│  async def _fetch_current_mode(self) -> None:                  │
+│      # Await async library methods directly                    │
+│      status = await self._client._switch_status()              │
+│      self.current_mode = self._map_mode(status)                │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  INCORRECT (Previous Implementation)                            │
+│                                                                 │
+│  async def _async_update_data(self) -> Stats:                  │
+│      # ❌ Using executor on async method returns coroutine     │
+│      stats = await self.hass.async_add_executor_job(           │
+│          self._client.get_stats  # Returns coroutine object!   │
+│      )                                                          │
+│      # Result: 'coroutine' object has no attribute 'current'   │
+└─────────────────────────────────────────────────────────────────┘
+
+Rule: If library method is "async def" → use "await"
+      If library method is "def" (sync) → use executor_job
+```
+
 ## Entity Availability Logic
 
 ```
@@ -351,6 +414,12 @@ active when the cache was filled.
 │                                                                 │
 │  This allows users to change mode even when the current         │
 │  mode cannot be read from the gateway.                          │
+│                                                                 │
+│  Options come from MODES, which must contain every mode the      │
+│  gateway can report: HA renders a current_option outside         │
+│  options as "unknown". Smart Energy Dispatch is therefore        │
+│  listed but not settable — selecting it raises an error          │
+│  pointing at the FranklinWH app.                                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

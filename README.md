@@ -92,6 +92,9 @@ This custom integration allows you to monitor and control your FranklinWH Whole 
   - **Time of Use**: Optimize based on utility rate schedules
   - **Self Consumption**: Maximize use of solar energy
   - **Backup**: Reserve battery for outages
+  - **Smart Energy Dispatch**: FranklinWH's AI-assisted mode. Reported when
+    active, but can only be *set* in the FranklinWH app — the API provides no way
+    to select it.
 
   The entity also exposes a `profile_name` attribute holding the gateway's own
   name for the active profile, which is usually the rate plan (e.g. `EV2A`).
@@ -135,6 +138,7 @@ Smart circuit switches will only appear if your FranklinWH system has smart circ
 
 ## Known Limitations
 
+- **Smart Energy Dispatch**: Reported when active, but cannot be selected from Home Assistant — the `franklinwh` library has no way to set it. Use the FranklinWH app.
 - **Smart Circuits**: The smart circuit implementation is basic and may need adjustments based on your specific system configuration
 - **SOC Parameter**: When changing modes, the state-of-charge parameter is set to 100% by default
 

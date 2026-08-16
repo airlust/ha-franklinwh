@@ -177,6 +177,7 @@
   <text class="code-text" x="1120" y="510" text-anchor="start">1 → TOU</text>
   <text class="code-text" x="1120" y="525" text-anchor="start">2 → SELF</text>
   <text class="code-text" x="1120" y="540" text-anchor="start">3 → BACKUP</text>
+  <text class="code-text" x="1120" y="555" text-anchor="start">7 → SMART DISPATCH</text>
   <text class="small-text" x="1110" y="577" text-anchor="start">workMode is stable;</text>
   <text class="small-text" x="1110" y="592" text-anchor="start">ids are per-account,</text>
   <text class="small-text" x="1110" y="607" text-anchor="start">so no id table.</text>
@@ -233,6 +234,7 @@
   <text class="small-text" x="715" y="850" text-anchor="start">• Time of Use</text>
   <text class="small-text" x="715" y="866" text-anchor="start">• Self Consumption</text>
   <text class="small-text" x="715" y="882" text-anchor="start">• Emergency Backup</text>
+  <text class="small-text" x="715" y="898" text-anchor="start">• Smart Energy Dispatch</text>
 
   <!-- Switch Platform -->
   <rect class="component-box" x="940" y="760" width="240" height="140"/>
@@ -317,7 +319,7 @@
   <rect class="device-box" x="100" y="1650" width="1200" height="120"/>
   <text class="title-text" x="700" y="1685" text-anchor="middle">FranklinWH Gateway (Physical Device)</text>
   <text class="body-text" x="700" y="1715" text-anchor="middle">Battery Management System • Solar/Grid/Load Monitoring • Smart Switch Control</text>
-  <text class="body-text" x="700" y="1745" text-anchor="middle">Capacity: per-unit ratedCapacity • Power: 10 kW rated • Operating Modes: TOU, Self Consumption, Backup</text>
+  <text class="body-text" x="700" y="1745" text-anchor="middle">Capacity: per-unit ratedCapacity • Power: 10 kW rated • Operating Modes: TOU, Self Consumption, Backup, Smart Energy Dispatch</text>
 
   <!-- Retry Logic Diagram -->
   <rect class="component-box" x="100" y="1810" width="600" height="260"/>
