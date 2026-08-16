@@ -31,7 +31,8 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
 5. **Ambient Temperature**: Coordinator calls `await client._status()` to get ambient temperature from gateway → Stored as `coordinator.ambient_temp`
 6. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
-7. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
+7. **Battery Capacity**: Coordinator calls `obtainApowersInfo` once and sums each unit's `ratedCapacity` → Stored as `coordinator.battery_capacity`
+8. **Entity Updates**: Platform entities extend `CoordinatorEntity` and access data via `self.coordinator.data` or coordinator properties
 
 ### Important Data Structures
 
@@ -87,7 +88,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 8. **Coordinator Properties**: The coordinator exposes calculated properties:
    - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
-   - `time_to_full_charge`: Calculates hours to 100% SOC based on current charge rate and 15kWh capacity
+   - `time_to_full_charge`: Calculates hours to 100% SOC from the current charge rate and `battery_capacity`
    - `ambient_temp`: Temperature in Celsius from gateway
    - `charging_power_limited`: Boolean indicating if BMS is limiting charging power
    - `tou_current_period`: Current TOU period name (e.g., 'on-peak', 'off-peak')
@@ -111,7 +112,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 - **Retry Configuration**: `MAX_RETRIES = 2`, `RETRY_DELAY = 3` seconds
 - **Required Config**: `CONF_EMAIL`, `CONF_PASSWORD`, `CONF_GATEWAY_ID`
 - **Mode Keys**: Must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`)
-- **Battery Capacity**: 15.0 kWh (used for time-to-full calculations)
+- **Battery Capacity**: read from the gateway by summing `ratedCapacity` across installed aPower units (`obtainApowersInfo`). `DEFAULT_BATTERY_CAPACITY = 15.0` kWh covers one unit and is only used until the first successful fetch. Do not reintroduce a hardcoded total: installations have more than one aPower, and units are not all the same size.
 
 ## Dependencies
 

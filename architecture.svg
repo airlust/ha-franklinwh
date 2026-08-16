@@ -163,7 +163,7 @@
   <text class="body-text" x="140" y="565" text-anchor="start">• current_mode: str | None</text>
   <text class="body-text" x="140" y="583" text-anchor="start">• ambient_temp: float | None</text>
   <text class="body-text" x="140" y="601" text-anchor="start">• charging_power_limited: bool | None</text>
-  <text class="body-text" x="140" y="619" text-anchor="start">• battery_capacity: float = 15.0 kWh</text>
+  <text class="body-text" x="140" y="619" text-anchor="start">• battery_capacity: float (from gateway)</text>
 
   <text class="subtitle-text" x="700" y="545" text-anchor="start">Properties:</text>
   <text class="body-text" x="720" y="565" text-anchor="start">• current_charge_rate - From battery_use</text>
@@ -318,7 +318,7 @@
   <rect class="device-box" x="100" y="1650" width="1200" height="120"/>
   <text class="title-text" x="700" y="1685" text-anchor="middle">FranklinWH Gateway (Physical Device)</text>
   <text class="body-text" x="700" y="1715" text-anchor="middle">Battery Management System • Solar/Grid/Load Monitoring • Smart Switch Control</text>
-  <text class="body-text" x="700" y="1745" text-anchor="middle">Capacity: 15 kWh • Power: 10 kW rated • Operating Modes: TOU, Self Consumption, Backup</text>
+  <text class="body-text" x="700" y="1745" text-anchor="middle">Capacity: per-unit ratedCapacity • Power: 10 kW rated • Operating Modes: TOU, Self Consumption, Backup</text>
 
   <!-- Retry Logic Diagram -->
   <rect class="component-box" x="100" y="1810" width="600" height="260"/>
@@ -396,7 +396,7 @@
 
   <text class="subtitle-text" x="700" y="2500" text-anchor="start">5. Calculated Sensors</text>
   <text class="body-text" x="720" y="2520" text-anchor="start">• Charge rate: abs(battery_use) when battery_use &lt; 0</text>
-  <text class="body-text" x="720" y="2538" text-anchor="start">• Time to full: (100-SOC)/100 * 15kWh / charge_rate</text>
+  <text class="body-text" x="720" y="2538" text-anchor="start">• Time to full: (100-SOC)/100 * battery_capacity / charge_rate</text>
   <text class="body-text" x="720" y="2556" text-anchor="start">• Real-time monitoring better than prediction</text>
 
   <text class="subtitle-text" x="700" y="2585" text-anchor="start">6. Retry Strategy</text>

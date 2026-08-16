@@ -38,6 +38,7 @@
 │  │  • _fetch_current_mode() - Gets operating mode via _switch_status │  │
 │  │  • _fetch_charging_limited() - Gets BMS limiting status           │  │
 │  │  • _fetch_ambient_temp() - Gets temperature via _status           │  │
+│  │  • _fetch_battery_capacity() - Sums aPower ratedCapacity (once)   │  │
 │  │  • _fetch_tou_schedule_if_needed() - Gets TOU (hourly)            │  │
 │  │  • async_refresh_tou_schedule() - Manual TOU refresh              │  │
 │  │  • async_set_mode() - Changes operating mode                       │  │
@@ -456,5 +457,5 @@ custom_components/franklinwh/
 
 ### 6. **Calculated Sensors**
 - Charge rate calculated from battery_use (negative = charging)
-- Time to full charge uses 15kWh capacity constant
+- Time to full charge uses `battery_capacity`, summed from the gateway's per-unit `ratedCapacity` (falls back to `DEFAULT_BATTERY_CAPACITY` until first fetched)
 - Real-time values more useful than predictions
