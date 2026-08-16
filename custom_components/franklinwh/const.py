@@ -27,6 +27,10 @@ MODE_BACKUP: Final = "emergency_backup"
 # can be read but not set; see select.py.
 MODE_SMART_ENERGY_DISPATCH: Final = "smart_energy_dispatch"
 
+# The keys are the select entity's options and what lands in the state machine.
+# The values are English fallbacks for log and error messages only — the UI takes
+# its display names from the entity translations (strings.json), keyed by
+# "operating_mode", so both places must be updated when a mode is added.
 MODES: Final = {
     MODE_TIME_OF_USE: "Time of Use",
     MODE_SELF_CONSUMPTION: "Self Consumption",

@@ -52,8 +52,12 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
     """Representation of a FranklinWH operating mode selector."""
 
     _attr_has_entity_name = True
-    _attr_name = "Operating Mode"
     _attr_options = list(MODES.keys())
+    # Supplies both the entity name and the per-option display names from
+    # strings.json / translations. The option keys are the integration's internal
+    # vocabulary and are what land in the state machine; without a translation key
+    # the UI shows them raw, e.g. "smart_energy_dispatch".
+    _attr_translation_key = "operating_mode"
 
     def __init__(
         self,
@@ -105,8 +109,9 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
             # Raise rather than log: the dropdown would otherwise just snap back
             # with no indication of why.
             raise HomeAssistantError(
-                "Smart Energy Dispatch can only be enabled in the FranklinWH app. "
-                "The API offers no way to select it."
+                translation_domain=DOMAIN,
+                translation_key="mode_not_settable",
+                translation_placeholders={"mode": MODES[MODE_SMART_ENERGY_DISPATCH]},
             )
 
         if option not in MODE_MAP:

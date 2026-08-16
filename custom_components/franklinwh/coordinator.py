@@ -86,6 +86,16 @@ MIN_MEANINGFUL_CHARGE_RATE = 0.1
 # reached, the mode goes unavailable along with everything else.
 
 
+def _describe(err: BaseException) -> str:
+    """Render an exception for logging, including ones raised without a message.
+
+    The franklinwh library raises some exceptions bare (`raise InvalidDataException`),
+    so str() is empty and a "%s" log line reads as a blank. Always include the type.
+    """
+    text = str(err)
+    return f"{type(err).__name__}: {text}" if text else type(err).__name__
+
+
 async def _async_resolve(value: Any) -> Any:
     """Resolve nested awaitables returned by franklinwh client methods.
 
@@ -235,7 +245,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         "Transient error fetching data (attempt %d/%d): %s. Retrying in %d seconds...",
                         attempt + 1,
                         MAX_RETRIES + 1,
-                        err,
+                        _describe(err),
                         delay,
                     )
                     await asyncio.sleep(delay)
@@ -265,8 +275,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         MAX_STALE_CYCLES,
                     )
 
-                _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, err)
-                raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {err}") from err
+                _LOGGER.error("Failed to fetch data after %d attempts: %s", MAX_RETRIES + 1, _describe(err))
+                raise UpdateFailed(f"Failed after {MAX_RETRIES + 1} attempts: {_describe(err)}") from err
 
             except Exception as err:
                 # Non-retryable error (auth, etc.)
@@ -274,7 +284,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 raise UpdateFailed(f"Failed to update data: {err}") from err
 
         # Should never reach here, but just in case
-        raise UpdateFailed(f"Failed to update data: {last_error}") from last_error
+        raise UpdateFailed(f"Failed to update data: {_describe(last_error)}") from last_error
 
     async def _resolve_mode_from_tou_list(self, raw_mode: int) -> str | None:
         """Resolve a runingMode value via the gateway's own TOU profile list.
@@ -831,7 +841,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         "Timeout setting mode (attempt %d/%d): %s. Retrying in %d seconds...",
                         attempt + 1,
                         MAX_RETRIES + 1,
-                        err,
+                        _describe(err),
                         RETRY_DELAY,
                     )
                     await asyncio.sleep(RETRY_DELAY)
@@ -870,7 +880,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                         "Timeout setting smart switch (attempt %d/%d): %s. Retrying in %d seconds...",
                         attempt + 1,
                         MAX_RETRIES + 1,
-                        err,
+                        _describe(err),
                         RETRY_DELAY,
                     )
                     await asyncio.sleep(RETRY_DELAY)

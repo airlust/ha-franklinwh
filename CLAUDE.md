@@ -78,19 +78,21 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 2. **Smart Energy Dispatch**: `workMode` 7, the AI-assisted mode added by the FranklinWH app in mid-2026. Read-only: the library's `Mode` class has no constructor for it, so `select.py` raises `HomeAssistantError` pointing at the app. Note it must still appear in `MODES` — HA renders a `current_option` that isn't in `options` as "unknown", which was the original bug.
 
-3. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
+3. **Adding an operating mode** touches three places, and missing the third is easy: the key and `MODES` entry in `const.py`, the `workMode` number in `WORK_MODE_TO_KEY`, and the display name under `entity.select.operating_mode.state` in **both** `strings.json` and `translations/en.json`. The select entity's options are the raw keys, so a mode with no translation shows in the UI as `smart_energy_dispatch` rather than "Smart Energy Dispatch". `MODES` values are only fallbacks for log and error text — they are not what the UI displays.
 
-4. **Generator Sensor**: Only created if `generator_production` exists and is greater than 0 (uses `exists_fn` in sensor description).
+4. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
 
-5. **Grid Status Sensor**: Disabled by default (`entity_registry_enabled_default=False`). Values map from enum: normal/down/off.
+5. **Generator Sensor**: Only created if `generator_production` exists and is greater than 0 (uses `exists_fn` in sensor description).
 
-6. **Sensor Value Functions**: All sensors use lambda functions in `value_fn` to extract data from the `Stats` object. These handle None checks for missing data gracefully.
+6. **Grid Status Sensor**: Disabled by default (`entity_registry_enabled_default=False`). Values map from enum: normal/down/off.
 
-7. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
+7. **Sensor Value Functions**: All sensors use lambda functions in `value_fn` to extract data from the `Stats` object. These handle None checks for missing data gracefully.
 
-8. **Async/Await Pattern**: The franklinwh library methods are ALL async (`async def get_stats()`, `async def set_mode()`, `async def _switch_status()`, etc.) except for `__init__`, `next_snno`, and `_build_payload`. All async methods MUST be awaited directly, NOT wrapped in `async_add_executor_job()`. Using the executor with async methods causes deadlocks (blocking the event loop while waiting for the executor thread which is waiting for the event loop).
+8. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
 
-9. **Coordinator Properties**: The coordinator exposes calculated properties:
+9. **Async/Await Pattern**: The franklinwh library methods are ALL async (`async def get_stats()`, `async def set_mode()`, `async def _switch_status()`, etc.) except for `__init__`, `next_snno`, and `_build_payload`. All async methods MUST be awaited directly, NOT wrapped in `async_add_executor_job()`. Using the executor with async methods causes deadlocks (blocking the event loop while waiting for the executor thread which is waiting for the event loop).
+
+10. **Coordinator Properties**: The coordinator exposes calculated properties:
    - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
    - `time_to_full_charge`: Hours to full from the current charge rate and `battery_capacity`. Returns `0.0` at or above `BATTERY_FULL_SOC` and `None` below `MIN_MEANINGFUL_CHARGE_RATE`. Both thresholds are load-bearing: gateways need not ever report exactly 100 (an aHub sitting full reports 99.7 while the app shows 100), and a full battery still draws a balancing trickle, so comparing against exactly 100 and exactly 0 made the sensor divide a tiny remainder by a tiny rate and report hours for a battery that was already full.
    - `ambient_temp`: Temperature in Celsius from gateway
@@ -101,7 +103,7 @@ This is a Home Assistant custom component with no build process. Testing is done
    - `tou_utility_company`: Utility company name
    - `tou_rate_plan`: Rate plan name (e.g., 'E-TOU-C')
 
-10. **TOU Rate Sensors**: The integration fetches Time-of-Use rate schedules from endpoint 227 (`getTouDispatchDetail`). This provides season-based schedules with time periods, rates, and utility information. All TOU sensors are disabled by default (`entity_registry_enabled_default=False`). The schedule includes:
+11. **TOU Rate Sensors**: The integration fetches Time-of-Use rate schedules from endpoint 227 (`getTouDispatchDetail`). This provides season-based schedules with time periods, rates, and utility information. All TOU sensors are disabled by default (`entity_registry_enabled_default=False`). The schedule includes:
    - Seasonal variations (Winter/Summer months)
    - Multiple rate periods per day (on-peak, off-peak, shoulder)
    - Electricity rates for each period

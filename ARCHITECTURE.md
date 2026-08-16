@@ -420,6 +420,12 @@ Rule: If library method is "async def" → use "await"
 │  options as "unknown". Smart Energy Dispatch is therefore        │
 │  listed but not settable — selecting it raises an error          │
 │  pointing at the FranklinWH app.                                │
+│                                                                 │
+│  Display names come from the entity translations, not from       │
+│  MODES: _attr_translation_key = "operating_mode" resolves each   │
+│  option key against entity.select.operating_mode.state in        │
+│  strings.json. Without that, options render as raw keys          │
+│  ("smart_energy_dispatch").                                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -460,11 +466,19 @@ custom_components/franklinwh/
 │
 ├── select.py                # 1 select entity
 │   └── FranklinWHModeSelect
+│       ├── translation_key = "operating_mode" (option display names)
 │       └── Calls coordinator.async_set_mode()
 │
-└── switch.py                # Dynamic smart switch entities
-    └── FranklinWHSmartSwitch
-        └── Calls coordinator.async_set_smart_switch_state()
+├── switch.py                # Dynamic smart switch entities
+│   └── FranklinWHSmartSwitch
+│       └── Calls coordinator.async_set_smart_switch_state()
+│
+├── strings.json             # Source translations
+│   ├── config.* - Config flow text
+│   ├── entity.select.operating_mode.state - Mode display names
+│   └── exceptions.* - User-facing error messages
+│
+└── translations/en.json     # Must mirror strings.json
 ```
 
 ## Error Handling Strategy
