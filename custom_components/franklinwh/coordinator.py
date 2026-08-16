@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 from franklinwh import Client, Mode, Stats, TokenFetcher
-from franklinwh.client import DeviceTimeoutException, GatewayOfflineException
+from franklinwh.client import DeviceTimeoutException, GatewayOfflineException, InvalidDataException
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -186,7 +186,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 return stats
 
-            except (DeviceTimeoutException, GatewayOfflineException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
+            except (DeviceTimeoutException, GatewayOfflineException, InvalidDataException, httpx.ReadTimeout, httpx.ConnectTimeout) as err:
                 last_error = err
 
                 # If we have retries left, wait and try again
