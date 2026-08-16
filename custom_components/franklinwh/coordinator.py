@@ -41,6 +41,18 @@ BACKOFF_JITTER_PCT = 0.10  # +/- 10%
 # reports the real total, which it does per installed unit.
 DEFAULT_BATTERY_CAPACITY = 15.0
 
+# SOC at or above which the battery counts as full for time-to-full purposes.
+# Gateways do not necessarily ever report exactly 100: BMS cell balancing holds
+# the reported figure just under, so an aHub sitting full reports 99.7 and the
+# app shows 100. Without this, time_to_full_charge divides a tiny remainder by a
+# tiny trickle rate and produces a large, meaningless number.
+BATTERY_FULL_SOC = 99.0
+
+# Charge rates below this (kW) are treated as not charging. A trickle this small
+# is cell balancing or standby draw, not a charge worth estimating from: at 0.05 kW
+# any remaining capacity divides out to hours that bear no relation to reality.
+MIN_MEANINGFUL_CHARGE_RATE = 0.1
+
 # Map numeric mode values from API to our mode keys
 # The franklinwh library only knows about standard modes: 9322, 9323, 9324
 # but gateways can return different values for customized modes
@@ -494,18 +506,29 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
     @property
     def time_to_full_charge(self) -> float | None:
-        """Calculate time to full charge in hours."""
+        """Calculate time to full charge in hours.
+
+        Returns 0.0 when the battery is full, None when it isn't meaningfully
+        charging, and otherwise the estimate. See BATTERY_FULL_SOC and
+        MIN_MEANINGFUL_CHARGE_RATE for why both thresholds exist rather than
+        comparing against exactly 100 and exactly 0.
+        """
         if not self.data or not self.data.current:
             return None
 
         current_soc = self.data.current.battery_soc
         charge_rate = self.current_charge_rate
 
-        if current_soc is None or charge_rate is None or charge_rate == 0:
+        if current_soc is None or charge_rate is None:
             return None
 
-        if current_soc >= 100:
+        # Full, or as full as this gateway will admit to being.
+        if current_soc >= BATTERY_FULL_SOC:
             return 0.0
+
+        # Not charging, or trickling so slowly that an estimate would mislead.
+        if charge_rate < MIN_MEANINGFUL_CHARGE_RATE:
+            return None
 
         # Calculate remaining capacity and time
         remaining_capacity = (100 - current_soc) / 100 * self.battery_capacity

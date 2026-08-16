@@ -88,7 +88,7 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 8. **Coordinator Properties**: The coordinator exposes calculated properties:
    - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
-   - `time_to_full_charge`: Calculates hours to 100% SOC from the current charge rate and `battery_capacity`
+   - `time_to_full_charge`: Hours to full from the current charge rate and `battery_capacity`. Returns `0.0` at or above `BATTERY_FULL_SOC` and `None` below `MIN_MEANINGFUL_CHARGE_RATE`. Both thresholds are load-bearing: gateways need not ever report exactly 100 (an aHub sitting full reports 99.7 while the app shows 100), and a full battery still draws a balancing trickle, so comparing against exactly 100 and exactly 0 made the sensor divide a tiny remainder by a tiny rate and report hours for a battery that was already full.
    - `ambient_temp`: Temperature in Celsius from gateway
    - `charging_power_limited`: Boolean indicating if BMS is limiting charging power
    - `tou_current_period`: Current TOU period name (e.g., 'on-peak', 'off-peak')

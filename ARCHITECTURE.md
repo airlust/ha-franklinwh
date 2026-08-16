@@ -46,7 +46,7 @@
 │  │                                                                     │  │
 │  │  Properties:                                                        │  │
 │  │  • current_charge_rate - Calculated from battery_use              │  │
-│  │  • time_to_full_charge - Estimated based on charge rate           │  │
+│  │  • time_to_full_charge - Hours, 0 when full, None when idle       │  │
 │  │  • tou_current_period - Current rate period name                  │  │
 │  │  • tou_current_rate - Current electricity rate                    │  │
 │  │  • tou_next_period_start - Next period start time                 │  │
@@ -458,4 +458,5 @@ custom_components/franklinwh/
 ### 6. **Calculated Sensors**
 - Charge rate calculated from battery_use (negative = charging)
 - Time to full charge uses `battery_capacity`, summed from the gateway's per-unit `ratedCapacity` (falls back to `DEFAULT_BATTERY_CAPACITY` until first fetched)
+- Reads `0` at or above `BATTERY_FULL_SOC` (99), since a gateway need not ever report exactly 100, and `unknown` below `MIN_MEANINGFUL_CHARGE_RATE` (0.1 kW), since a balancing trickle is not a charge worth estimating from
 - Real-time values more useful than predictions
