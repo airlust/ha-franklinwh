@@ -38,6 +38,7 @@
 │  │  • _fetch_current_mode() - Gets operating mode via _switch_status │  │
 │  │  • _fetch_charging_limited() - Gets BMS limiting status           │  │
 │  │  • _fetch_ambient_temp() - Gets temperature via _status           │  │
+│  │  • _fetch_battery_capacity() - Sums aPower ratedCapacity (once)   │  │
 │  │  • _fetch_tou_schedule_if_needed() - Gets TOU (hourly)            │  │
 │  │  • async_refresh_tou_schedule() - Manual TOU refresh              │  │
 │  │  • async_set_mode() - Changes operating mode                       │  │
@@ -45,7 +46,7 @@
 │  │                                                                     │  │
 │  │  Properties:                                                        │  │
 │  │  • current_charge_rate - Calculated from battery_use              │  │
-│  │  • time_to_full_charge - Estimated based on charge rate           │  │
+│  │  • time_to_full_charge - Hours, 0 when full, None when idle       │  │
 │  │  • tou_current_period - Current rate period name                  │  │
 │  │  • tou_current_rate - Current electricity rate                    │  │
 │  │  • tou_next_period_start - Next period start time                 │  │
@@ -456,5 +457,6 @@ custom_components/franklinwh/
 
 ### 6. **Calculated Sensors**
 - Charge rate calculated from battery_use (negative = charging)
-- Time to full charge uses 15kWh capacity constant
+- Time to full charge uses `battery_capacity`, summed from the gateway's per-unit `ratedCapacity` (falls back to `DEFAULT_BATTERY_CAPACITY` until first fetched)
+- Reads `0` at or above `BATTERY_FULL_SOC` (99), since a gateway need not ever report exactly 100, and `unknown` below `MIN_MEANINGFUL_CHARGE_RATE` (0.1 kW), since a balancing trickle is not a charge worth estimating from
 - Real-time values more useful than predictions

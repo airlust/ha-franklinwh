@@ -37,6 +37,22 @@ MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
 BACKOFF_FACTOR = 2.0
 BACKOFF_JITTER_PCT = 0.10  # +/- 10%
 
+# Fallback usable capacity, in kWh, for one aPower. Only used until the gateway
+# reports the real total, which it does per installed unit.
+DEFAULT_BATTERY_CAPACITY = 15.0
+
+# SOC at or above which the battery counts as full for time-to-full purposes.
+# Gateways do not necessarily ever report exactly 100: BMS cell balancing holds
+# the reported figure just under, so an aHub sitting full reports 99.7 and the
+# app shows 100. Without this, time_to_full_charge divides a tiny remainder by a
+# tiny trickle rate and produces a large, meaningless number.
+BATTERY_FULL_SOC = 99.0
+
+# Charge rates below this (kW) are treated as not charging. A trickle this small
+# is cell balancing or standby draw, not a charge worth estimating from: at 0.05 kW
+# any remaining capacity divides out to hours that bear no relation to reality.
+MIN_MEANINGFUL_CHARGE_RATE = 0.1
+
 # Map numeric mode values from API to our mode keys
 # The franklinwh library only knows about standard modes: 9322, 9323, 9324
 # but gateways can return different values for customized modes
@@ -100,7 +116,11 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.current_mode: str | None = None
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
-        self.battery_capacity: float = 15.0  # kWh - will be updated from device info
+        # kWh. Replaced with the gateway's reported total on the first update; see
+        # _fetch_battery_capacity(). The default covers a single aPower so that
+        # time_to_full_charge is usable before that first fetch lands.
+        self.battery_capacity: float = DEFAULT_BATTERY_CAPACITY
+        self._battery_capacity_fetched: bool = False
         self.tou_schedule: dict | None = None  # TOU rate schedule data
         self._last_tou_fetch: float = 0  # Timestamp of last TOU fetch
 
@@ -171,6 +191,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
                 # Fetch ambient temperature from _status endpoint
                 await self._fetch_ambient_temp()
+
+                # Fetch battery capacity (no-op after the first success)
+                await self._fetch_battery_capacity()
 
                 # Fetch TOU schedule once per hour (don't fail if it errors)
                 await self._fetch_tou_schedule_if_needed()
@@ -308,6 +331,54 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                 self.current_mode = None
                 return
 
+    async def _fetch_battery_capacity(self) -> None:
+        """Fetch total usable battery capacity from the gateway, once.
+
+        obtainApowersInfo returns one entry per installed aPower, each with its own
+        ratedCapacity, so the total is their sum. Summing rather than multiplying a
+        unit count by a constant means a mixed installation still adds up correctly.
+
+        Only attempted until it succeeds: capacity changes when hardware is added,
+        not while Home Assistant is running. Failure leaves the previous value in
+        place and is retried on the next update, so a backend blip during startup
+        doesn't leave the wrong number in place permanently.
+        """
+        if self._battery_capacity_fetched or self._client is None:
+            return
+
+        try:
+            url = self._client.url_base + "hes-gateway/terminal/obtainApowersInfo"
+            async with self._client_lock:
+                response = await _async_resolve(self._client._get(url, {}))
+
+            units = (response or {}).get("result") or []
+            capacities = [
+                unit.get("ratedCapacity")
+                for unit in units
+                if isinstance(unit, dict) and unit.get("ratedCapacity")
+            ]
+            if not capacities:
+                _LOGGER.debug(
+                    "No ratedCapacity in obtainApowersInfo; keeping %s kWh",
+                    self.battery_capacity,
+                )
+                return
+
+            total = float(sum(capacities))
+            self._battery_capacity_fetched = True
+            if total != self.battery_capacity:
+                _LOGGER.info(
+                    "Battery capacity: %s kWh across %d aPower unit(s)",
+                    total,
+                    len(capacities),
+                )
+            self.battery_capacity = total
+
+        except Exception as err:
+            # Not fatal: time_to_full_charge stays on the previous value and this
+            # is retried next cycle.
+            _LOGGER.debug("Could not fetch battery capacity: %s", err)
+
     async def _fetch_ambient_temp(self) -> None:
         """Fetch ambient temperature from _status endpoint."""
         try:
@@ -435,18 +506,29 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
     @property
     def time_to_full_charge(self) -> float | None:
-        """Calculate time to full charge in hours."""
+        """Calculate time to full charge in hours.
+
+        Returns 0.0 when the battery is full, None when it isn't meaningfully
+        charging, and otherwise the estimate. See BATTERY_FULL_SOC and
+        MIN_MEANINGFUL_CHARGE_RATE for why both thresholds exist rather than
+        comparing against exactly 100 and exactly 0.
+        """
         if not self.data or not self.data.current:
             return None
 
         current_soc = self.data.current.battery_soc
         charge_rate = self.current_charge_rate
 
-        if current_soc is None or charge_rate is None or charge_rate == 0:
+        if current_soc is None or charge_rate is None:
             return None
 
-        if current_soc >= 100:
+        # Full, or as full as this gateway will admit to being.
+        if current_soc >= BATTERY_FULL_SOC:
             return 0.0
+
+        # Not charging, or trickling so slowly that an estimate would mislead.
+        if charge_rate < MIN_MEANINGFUL_CHARGE_RATE:
+            return None
 
         # Calculate remaining capacity and time
         remaining_capacity = (100 - current_soc) / 100 * self.battery_capacity
