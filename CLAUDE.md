@@ -12,13 +12,13 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Core Components
 
-- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API every 60 seconds. Implements retry logic (2 retries with 3-second delays) for transient errors (`DeviceTimeoutException`, `GatewayOfflineException`) for both stats and mode fetching. Manages authentication via `TokenFetcher` which handles automatic token refresh.
+- **Coordinator** (`coordinator.py`): Central data fetching layer using Home Assistant's `DataUpdateCoordinator`. Polls the FranklinWH API on `UPDATE_INTERVAL`. A single retry loop in `_async_update_data()` covers everything the cycle fetches — retries on `TRANSIENT_ERRORS`, applies adaptive backoff, then serves cached values for up to `MAX_STALE_CYCLES` before entities go unavailable. Manages authentication via `TokenFetcher` which handles automatic token refresh.
 
 - **Platforms**: The integration implements five Home Assistant platforms:
   - `sensor.py`: Power sensors (solar, battery, grid, load, generator), battery SOC, daily energy totals, diagnostic sensors (grid status, ambient temperature), charging rate prediction sensors (current charge rate, time to full charge), and TOU rate sensors (current period, current rate, next period start, utility company, rate plan) - 22 sensors total
   - `binary_sensor.py`: Charging power limited indicator (shows when BMS is limiting charging power)
   - `button.py`: Manual TOU schedule refresh button
-  - `select.py`: Operating mode selector (Time of Use, Self Consumption, Backup)
+  - `select.py`: Operating mode selector (Time of Use, Self Consumption, Backup, Smart Energy Dispatch — the last is read-only)
   - `switch.py`: Smart circuit control (dynamically created based on gateway configuration)
 
 - **Config Flow** (`config_flow.py`): User-facing setup requiring email, password, and gateway ID. Validates credentials during setup and prevents duplicate entries using gateway ID as unique identifier.
@@ -27,7 +27,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 1. **Authentication**: `TokenFetcher(email, password)` → `Client(token_fetcher, gateway_id)`
 2. **Data Fetching**: Coordinator calls `await client.get_stats()` every 60 seconds → Returns `Stats` object with `current` (instantaneous values) and `totals` (daily energy)
-3. **Mode Detection**: Coordinator calls `await client._switch_status()` to get raw mode value, maps it via `MODE_VALUE_MAP` → Stored as `coordinator.current_mode`
+3. **Mode Detection**: Coordinator calls `await client._switch_status()` for the raw `runingMode`, then resolves it against the gateway's TOU profile list (`getGatewayTouListV2`) and reads that profile's `workMode` → Stored as `coordinator.current_mode`, with the profile's own name in `coordinator.current_mode_name`
 4. **Charging Status**: Coordinator calls `await client._mqtt_send()` to get BMS charging limitation status → Stored as `coordinator.charging_power_limited`
 5. **Ambient Temperature**: Coordinator calls `await client._status()` to get ambient temperature from gateway → Stored as `coordinator.ambient_temp`
 6. **TOU Schedule**: Coordinator calls `await client._mqtt_send()` with endpoint 227 to fetch TOU rate schedule → Stored as `coordinator.tou_schedule`
@@ -50,11 +50,11 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 
 ### Error Handling
 
-The coordinator implements retry logic specifically for:
-- `DeviceTimeoutException`: Gateway didn't respond in time
-- `GatewayOfflineException`: Gateway is offline
+Transient backend conditions are listed once in `TRANSIENT_ERRORS` (`coordinator.py`): `DeviceTimeoutException`, `GatewayOfflineException`, and the httpx read/connect timeouts. Add to that tuple rather than to an individual `except` clause, so every fetch sharing the update cycle keeps the same behavior.
 
-Both stats fetching (`_async_update_data`) and mode fetching (`_fetch_current_mode`) have independent retry logic. If mode fetching fails after all retries, it logs an error and sets `current_mode = None` (making the select entity unavailable) but doesn't fail the entire coordinator update. This ensures sensor data remains available even if mode detection temporarily fails.
+`_async_update_data()` owns the only retry loop. It retries (`MAX_RETRIES`, `UPDATE_RETRY_DELAYS`), applies adaptive backoff, and then serves cached values for up to `MAX_STALE_CYCLES` before marking entities unavailable.
+
+`_fetch_current_mode()` deliberately has **no** retry loop of its own — it runs inside that one and re-raises transient errors for it to handle. Do not give it one: it previously had independent retries and set `current_mode = None` on failure, which meant a brief backend blip that the power sensors rode out silently dropped the operating mode to "unknown". The mode now stays available exactly as long as the sensors do.
 
 Other exceptions (like authentication errors) are not retried and immediately fail the update.
 
@@ -72,21 +72,27 @@ This is a Home Assistant custom component with no build process. Testing is done
 
 ## Key Implementation Notes
 
-1. **Operating Mode Handling**: The integration calls `_switch_status()` directly to get the raw `runingMode` value from the gateway, then maps it using `MODE_VALUE_MAP` in coordinator.py. This bypasses the library's `get_mode()` method which only supports three standard modes (9322, 9323, 9324) and throws KeyError for customized modes like 113349 (E-TOU-C customized). Unknown modes default to time_of_use with a warning.
+1. **Operating Mode Handling**: The integration calls `_switch_status()` directly for the raw `runingMode`, bypassing the library's `get_mode()`, which only knows 9322/9323/9324 and raises KeyError otherwise. It then resolves the value via `_resolve_mode_from_tou_list()`: fetch `getGatewayTouListV2`, find the active profile (by `runingMode`, or by `currendId` when `runingMode` isn't a profile id), and read that profile's `workMode` from `WORK_MODE_TO_KEY`.
 
-2. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
+   **Do not add a table of `runingMode` → mode constants.** One existed and was removed. Those numbers are per-account database ids for TOU profile rows, not protocol constants — the same account reports different ids for the same mode on different gateways, and ids from different accounts interleave numerically. Such a table only ever helps users who reported their own values, and it is actively harmful: since an unrecognized `workMode` and a failed request both mean "unresolved", a table consulted at that point answers a *brand-new* mode with whatever that id previously meant. That is the silent mis-mapping of issue #6. When the mode can't be resolved, set `current_mode = None` and log loudly.
 
-3. **Generator Sensor**: Only created if `generator_production` exists and is greater than 0 (uses `exists_fn` in sensor description).
+2. **Smart Energy Dispatch**: `workMode` 7, the AI-assisted mode added by the FranklinWH app in mid-2026. Read-only: the library's `Mode` class has no constructor for it, so `select.py` raises `HomeAssistantError` pointing at the app. Note it must still appear in `MODES` — HA renders a `current_option` that isn't in `options` as "unknown", which was the original bug.
 
-4. **Grid Status Sensor**: Disabled by default (`entity_registry_enabled_default=False`). Values map from enum: normal/down/off.
+3. **Adding an operating mode** touches three places, and missing the third is easy: the key and `MODES` entry in `const.py`, the `workMode` number in `WORK_MODE_TO_KEY`, and the display name under `entity.select.operating_mode.state` in **both** `strings.json` and `translations/en.json`. The select entity's options are the raw keys, so a mode with no translation shows in the UI as `smart_energy_dispatch` rather than "Smart Energy Dispatch". `MODES` values are only fallbacks for log and error text — they are not what the UI displays.
 
-5. **Sensor Value Functions**: All sensors use lambda functions in `value_fn` to extract data from the `Stats` object. These handle None checks for missing data gracefully.
+4. **Smart Circuits**: The switch platform has placeholder implementation. The actual structure depends on how the FranklinWH API exposes smart circuit data. When implementing, inspect `coordinator.data` to determine the correct structure.
 
-6. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
+5. **Generator Sensor**: Only created if `generator_production` exists and is greater than 0 (uses `exists_fn` in sensor description).
 
-7. **Async/Await Pattern**: The franklinwh library methods are ALL async (`async def get_stats()`, `async def set_mode()`, `async def _switch_status()`, etc.) except for `__init__`, `next_snno`, and `_build_payload`. All async methods MUST be awaited directly, NOT wrapped in `async_add_executor_job()`. Using the executor with async methods causes deadlocks (blocking the event loop while waiting for the executor thread which is waiting for the event loop).
+6. **Grid Status Sensor**: Disabled by default (`entity_registry_enabled_default=False`). Values map from enum: normal/down/off.
 
-8. **Coordinator Properties**: The coordinator exposes calculated properties:
+7. **Sensor Value Functions**: All sensors use lambda functions in `value_fn` to extract data from the `Stats` object. These handle None checks for missing data gracefully.
+
+8. **Device Info**: All entities share the same device info using gateway_id as the identifier, grouping them under a single device in Home Assistant.
+
+9. **Async/Await Pattern**: The franklinwh library methods are ALL async (`async def get_stats()`, `async def set_mode()`, `async def _switch_status()`, etc.) except for `__init__`, `next_snno`, and `_build_payload`. All async methods MUST be awaited directly, NOT wrapped in `async_add_executor_job()`. Using the executor with async methods causes deadlocks (blocking the event loop while waiting for the executor thread which is waiting for the event loop).
+
+10. **Coordinator Properties**: The coordinator exposes calculated properties:
    - `current_charge_rate`: Returns positive kW value when charging (abs of negative battery_use)
    - `time_to_full_charge`: Hours to full from the current charge rate and `battery_capacity`. Returns `0.0` at or above `BATTERY_FULL_SOC` and `None` below `MIN_MEANINGFUL_CHARGE_RATE`. Both thresholds are load-bearing: gateways need not ever report exactly 100 (an aHub sitting full reports 99.7 while the app shows 100), and a full battery still draws a balancing trickle, so comparing against exactly 100 and exactly 0 made the sensor divide a tiny remainder by a tiny rate and report hours for a battery that was already full.
    - `ambient_temp`: Temperature in Celsius from gateway
@@ -97,7 +103,7 @@ This is a Home Assistant custom component with no build process. Testing is done
    - `tou_utility_company`: Utility company name
    - `tou_rate_plan`: Rate plan name (e.g., 'E-TOU-C')
 
-9. **TOU Rate Sensors**: The integration fetches Time-of-Use rate schedules from endpoint 227 (`getTouDispatchDetail`). This provides season-based schedules with time periods, rates, and utility information. All TOU sensors are disabled by default (`entity_registry_enabled_default=False`). The schedule includes:
+11. **TOU Rate Sensors**: The integration fetches Time-of-Use rate schedules from endpoint 227 (`getTouDispatchDetail`). This provides season-based schedules with time periods, rates, and utility information. All TOU sensors are disabled by default (`entity_registry_enabled_default=False`). The schedule includes:
    - Seasonal variations (Winter/Summer months)
    - Multiple rate periods per day (on-peak, off-peak, shoulder)
    - Electricity rates for each period
@@ -108,10 +114,11 @@ This is a Home Assistant custom component with no build process. Testing is done
 ## Constants and Configuration
 
 - **Domain**: `franklinwh`
-- **Update Interval**: 60 seconds (`UPDATE_INTERVAL`)
-- **Retry Configuration**: `MAX_RETRIES = 2`, `RETRY_DELAY = 3` seconds
+- **Update Interval**: 30 seconds (`UPDATE_INTERVAL`)
+- **Retry Configuration**: `MAX_RETRIES = 2`, `UPDATE_RETRY_DELAYS = [5, 15]` seconds; `MAX_STALE_CYCLES = 10` cycles of cached data before entities go unavailable
 - **Required Config**: `CONF_EMAIL`, `CONF_PASSWORD`, `CONF_GATEWAY_ID`
-- **Mode Keys**: Must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`)
+- **Mode Keys**: The first three must match library constants (`time_of_use`, `self_consumption`, `emergency_backup`); `smart_energy_dispatch` is integration-only, as the library has no equivalent
+- **Mode Enum**: `WORK_MODE_TO_KEY` maps the gateway's `workMode` (1, 2, 3, 7) to those keys
 - **Battery Capacity**: read from the gateway by summing `ratedCapacity` across installed aPower units (`obtainApowersInfo`). `DEFAULT_BATTERY_CAPACITY = 15.0` kWh covers one unit and is only used until the first successful fetch. Do not reintroduce a hardcoded total: installations have more than one aPower, and units are not all the same size.
 
 ## Dependencies
