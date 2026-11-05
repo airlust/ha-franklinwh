@@ -21,6 +21,22 @@ from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, MODE_TIME_OF_USE, M
 
 _LOGGER = logging.getLogger(__name__)
 
+# franklinwh builds its httpx clients with no timeout argument, so they get httpx's
+# 5 second default. sendMqtt (used by _switch_status for the operating mode, and for
+# the charging-limited status) relays the command to the gateway and waits for its
+# reply, which often takes longer than 5 seconds. Those fetches then raised
+# httpx.ReadTimeout and logged an error with a traceback. Give the clients more time.
+REQUEST_TIMEOUT = httpx.Timeout(20.0, connect=10.0)
+
+try:
+    from franklinwh.client import HttpClientFactory
+
+    HttpClientFactory.set_client_factory(
+        lambda: httpx.AsyncClient(http2=True, timeout=REQUEST_TIMEOUT)
+    )
+except ImportError:  # franklinwh without the factory keeps its own defaults
+    _LOGGER.debug("franklinwh has no HttpClientFactory; using its default timeout")
+
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
