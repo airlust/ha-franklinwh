@@ -6,6 +6,7 @@ from datetime import timedelta
 import logging
 import inspect
 import random
+import time
 from typing import Any
 
 import httpx
@@ -20,6 +21,12 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, MODE_TIME_OF_USE, MODE_SELF_CONSUMPTION, MODE_BACKUP
 
 _LOGGER = logging.getLogger(__name__)
+
+# cmd 201 (entrance info, for chargingPowerLimited) is never answered by some gateways, so
+# every poll waited the full HTTP timeout for it. After this many failures in a row, skip it
+# and try again once per CHARGING_LIMITED_RETRY_SECONDS.
+CHARGING_LIMITED_MAX_FAILURES = 3
+CHARGING_LIMITED_RETRY_SECONDS = 3600
 
 # Retry configuration for transient errors
 MAX_RETRIES = 2
@@ -116,6 +123,8 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         self.current_mode: str | None = None
         self.ambient_temp: float | None = None
         self.charging_power_limited: bool | None = None
+        self._charging_limited_failures: int = 0
+        self._charging_limited_skip_until: float = 0.0
         # kWh. Replaced with the gateway's reported total on the first update; see
         # _fetch_battery_capacity(). The default covers a single aPower so that
         # time_to_full_charge is usable before that first fetch lands.
@@ -403,6 +412,9 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
 
     async def _fetch_charging_limited(self) -> None:
         """Fetch charging power limited status from entrance info."""
+        now = time.monotonic()
+        if now < self._charging_limited_skip_until:
+            return
         try:
             if self._client is None:
                 self.charging_power_limited = None
@@ -424,10 +436,18 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
                     self.charging_power_limited = None
             else:
                 self.charging_power_limited = None
+            self._charging_limited_failures = 0
 
         except Exception as err:
             _LOGGER.debug("Failed to fetch charging limited status: %s", err)
             self.charging_power_limited = None
+            self._charging_limited_failures += 1
+            if self._charging_limited_failures >= CHARGING_LIMITED_MAX_FAILURES:
+                self._charging_limited_skip_until = now + CHARGING_LIMITED_RETRY_SECONDS
+                _LOGGER.debug(
+                    "Charging limited status failed %d times in a row; next try in %d s",
+                    self._charging_limited_failures, CHARGING_LIMITED_RETRY_SECONDS,
+                )
 
     async def _fetch_tou_schedule_if_needed(self) -> None:
         """Fetch TOU schedule only if it's been more than an hour since last fetch."""
