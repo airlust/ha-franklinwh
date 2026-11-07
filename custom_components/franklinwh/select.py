@@ -8,15 +8,28 @@ from franklinwh import Mode
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_GATEWAY_ID, DOMAIN, MODE_BACKUP, MODE_SELF_CONSUMPTION, MODE_TIME_OF_USE, MODES
+from .const import (
+    CONF_GATEWAY_ID,
+    DOMAIN,
+    MODE_BACKUP,
+    MODE_SELF_CONSUMPTION,
+    MODE_SMART_ENERGY_DISPATCH,
+    MODE_TIME_OF_USE,
+    MODES,
+)
 from .coordinator import FranklinWHCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Map our mode keys to the Mode class constructors
+# Map our mode keys to the Mode class constructors.
+#
+# Smart Energy Dispatch is deliberately absent: the franklinwh library's Mode
+# class provides no constructor for it, so the integration can report the mode
+# but not select it. It has to be set in the FranklinWH app.
 MODE_MAP = {
     MODE_TIME_OF_USE: Mode.time_of_use,
     MODE_SELF_CONSUMPTION: Mode.self_consumption,
@@ -39,8 +52,12 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
     """Representation of a FranklinWH operating mode selector."""
 
     _attr_has_entity_name = True
-    _attr_name = "Operating Mode"
     _attr_options = list(MODES.keys())
+    # Supplies both the entity name and the per-option display names from
+    # strings.json / translations. The option keys are the integration's internal
+    # vocabulary and are what land in the state machine; without a translation key
+    # the UI shows them raw, e.g. "smart_energy_dispatch".
+    _attr_translation_key = "operating_mode"
 
     def __init__(
         self,
@@ -68,6 +85,18 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
         return None
 
     @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """Expose the gateway's own name for the active profile.
+
+        The gateway names profiles after the rate plan they implement (e.g. "EV2A"),
+        which is more specific than the mode key it maps to.
+        """
+        name = self.coordinator.current_mode_name
+        if name:
+            return {"profile_name": name}
+        return None
+
+    @property
     def available(self) -> bool:
         """Return if entity is available."""
         # Allow mode selection even if we can't read the current mode
@@ -76,6 +105,15 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
 
     async def async_select_option(self, option: str) -> None:
         """Change the operating mode."""
+        if option == MODE_SMART_ENERGY_DISPATCH:
+            # Raise rather than log: the dropdown would otherwise just snap back
+            # with no indication of why.
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="mode_not_settable",
+                translation_placeholders={"mode": MODES[MODE_SMART_ENERGY_DISPATCH]},
+            )
+
         if option not in MODE_MAP:
             _LOGGER.error("Invalid mode selected: %s", option)
             return

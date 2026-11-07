@@ -20,5 +20,23 @@
     "abort": {
       "already_configured": "This FranklinWH gateway is already configured."
     }
+  },
+  "entity": {
+    "select": {
+      "operating_mode": {
+        "name": "Operating Mode",
+        "state": {
+          "time_of_use": "Time of Use",
+          "self_consumption": "Self Consumption",
+          "emergency_backup": "Backup",
+          "smart_energy_dispatch": "Smart Energy Dispatch"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "mode_not_settable": {
+      "message": "{mode} can only be enabled in the FranklinWH app. The API offers no way to select it."
+    }
   }
 }
