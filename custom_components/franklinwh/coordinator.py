@@ -21,6 +21,34 @@ from .const import CONF_GATEWAY_ID, DOMAIN, UPDATE_INTERVAL, MODE_TIME_OF_USE, M
 
 _LOGGER = logging.getLogger(__name__)
 
+# franklinwh builds its httpx clients with no timeout argument, so they get httpx's
+# 5 second default. sendMqtt (used by _switch_status for the operating mode, and for
+# the charging-limited status) relays the command to the gateway and waits for its
+# reply, which often takes longer than 5 seconds. Those fetches then raised
+# httpx.ReadTimeout and logged an error with a traceback. Give the clients more time.
+REQUEST_TIMEOUT = httpx.Timeout(20.0, connect=10.0)
+
+# verify= passes one SSL context, built here at import time (Home Assistant
+# imports integrations in an executor). Without it, every new AsyncClient loads
+# certifi's CA bundle, which Home Assistant reports as a blocking call inside the
+# event loop. It has to be a private context: httpcore sets ALPN (h2) on the
+# context it is given, and on HA's shared get_default_context() that made other
+# integrations' aiohttp requests receive HTTP/2 frames ("Bad status line").
+try:
+    import ssl
+
+    import certifi
+    from franklinwh.client import HttpClientFactory
+
+    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+    HttpClientFactory.set_client_factory(
+        lambda: httpx.AsyncClient(
+            http2=True, verify=_SSL_CONTEXT, timeout=REQUEST_TIMEOUT
+        )
+    )
+except ImportError:  # franklinwh without the factory keeps its own defaults
+    _LOGGER.debug("franklinwh has no HttpClientFactory; using its default timeout")
+
 # Retry configuration for transient errors
 MAX_RETRIES = 2
 RETRY_DELAY = 3  # seconds
