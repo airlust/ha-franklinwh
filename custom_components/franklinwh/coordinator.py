@@ -28,11 +28,23 @@ _LOGGER = logging.getLogger(__name__)
 # httpx.ReadTimeout and logged an error with a traceback. Give the clients more time.
 REQUEST_TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
+# verify= passes one SSL context, built here at import time (Home Assistant
+# imports integrations in an executor). Without it, every new AsyncClient loads
+# certifi's CA bundle, which Home Assistant reports as a blocking call inside the
+# event loop. It has to be a private context: httpcore sets ALPN (h2) on the
+# context it is given, and on HA's shared get_default_context() that made other
+# integrations' aiohttp requests receive HTTP/2 frames ("Bad status line").
 try:
+    import ssl
+
+    import certifi
     from franklinwh.client import HttpClientFactory
 
+    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
     HttpClientFactory.set_client_factory(
-        lambda: httpx.AsyncClient(http2=True, timeout=REQUEST_TIMEOUT)
+        lambda: httpx.AsyncClient(
+            http2=True, verify=_SSL_CONTEXT, timeout=REQUEST_TIMEOUT
+        )
     )
 except ImportError:  # franklinwh without the factory keeps its own defaults
     _LOGGER.debug("franklinwh has no HttpClientFactory; using its default timeout")
