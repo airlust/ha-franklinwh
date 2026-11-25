@@ -37,6 +37,9 @@
   "exceptions": {
     "mode_not_settable": {
       "message": "{mode} can only be enabled in the FranklinWH app. The API offers no way to select it."
+    },
+    "reserve_unreadable": {
+      "message": "Couldn't read the current reserve for {mode} from FranklinWH, so the mode was not changed. Try again in a moment."
     }
   }
 }

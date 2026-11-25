@@ -286,6 +286,63 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
         # Should never reach here, but just in case
         raise UpdateFailed(f"Failed to update data: {_describe(last_error)}") from last_error
 
+    async def _fetch_tou_list(self) -> dict[str, Any]:
+        """Fetch the gateway's TOU profile list (getGatewayTouListV2).
+
+        Returns the response's "result" object: every profile on the account, each
+        with its workMode, id and reserve ("soc"), plus currendId naming the active
+        one. Errors propagate; callers decide what a failure means for them.
+        """
+        url = self._client.url_base + "hes-gateway/terminal/tou/getGatewayTouListV2"
+        async with self._client_lock:
+            response = await _async_resolve(
+                self._client._post(url, None, {"showType": 1})
+            )
+        return (response or {}).get("result") or {}
+
+    async def async_get_mode_reserve(self, mode_key: str) -> int | None:
+        """Return the reserve (backup SOC %) the gateway holds for a mode.
+
+        Each mode keeps its own reserve on the gateway, set in the FranklinWH app.
+        updateTouMode always sends a soc, so switching modes must send that mode's
+        existing reserve or the switch overwrites it — the library's Mode
+        constructors default to 20% (100% for backup), which is issue #18.
+
+        Returns None when the gateway has no profile (or no reserve) for the mode,
+        meaning there is nothing to preserve. Raises when the profile list can't be
+        read, so the caller can refuse to switch rather than overwrite the reserve
+        with a guess.
+        """
+        work_mode = next(
+            (wm for wm, key in WORK_MODE_TO_KEY.items() if key == mode_key), None
+        )
+        if work_mode is None:
+            return None
+
+        last_error: BaseException | None = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                result = await self._fetch_tou_list()
+                break
+            except TRANSIENT_ERRORS as err:
+                last_error = err
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY)
+        else:
+            raise UpdateFailed(
+                f"Could not read the TOU profile list: {_describe(last_error)}"
+            ) from last_error
+
+        for profile in result.get("list") or []:
+            if profile.get("workMode") != work_mode:
+                continue
+            soc = profile.get("soc")
+            if soc is None:
+                return None
+            # The list reports e.g. 40.0; the app and updateTouMode use whole percents.
+            return int(round(float(soc)))
+        return None
+
     async def _resolve_mode_from_tou_list(self, raw_mode: int) -> str | None:
         """Resolve a runingMode value via the gateway's own TOU profile list.
 
@@ -308,18 +365,13 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             return None
 
         try:
-            url = self._client.url_base + "hes-gateway/terminal/tou/getGatewayTouListV2"
-            async with self._client_lock:
-                response = await _async_resolve(
-                    self._client._post(url, None, {"showType": 1})
-                )
+            result = await self._fetch_tou_list()
         except TRANSIENT_ERRORS:
             raise
         except Exception as err:
             _LOGGER.debug("Could not fetch TOU profile list: %s", err)
             return None
 
-        result = (response or {}).get("result") or {}
         profiles = {
             profile["id"]: profile
             for profile in result.get("list") or []
