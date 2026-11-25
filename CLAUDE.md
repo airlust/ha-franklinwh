@@ -43,6 +43,7 @@ The integration uses the `franklinwh-python` library (https://github.com/richo/f
 - **Mode objects** (from franklinwh library):
   - Created via `Mode.time_of_use()`, `Mode.self_consumption()`, `Mode.emergency_backup()`
   - Each mode constructor accepts optional SOC parameter (defaults: 20% for TOU/Self Consumption, 100% for Emergency Backup)
+  - **Never call a constructor bare when setting a mode.** `updateTouMode` always writes the reserve it is sent, so the defaults overwrite the reserve the user set in the app (issue #18). `select.py` reads the target mode's own reserve with `coordinator.async_get_mode_reserve()` (the `soc` of that `workMode`'s profile in `getGatewayTouListV2`) and passes it in; if it can't be read, the mode change is refused.
 
 ### Power and Energy Units
 

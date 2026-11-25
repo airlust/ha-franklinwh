@@ -119,9 +119,31 @@ class FranklinWHModeSelect(CoordinatorEntity[FranklinWHCoordinator], SelectEntit
             return
 
         mode_constructor = MODE_MAP[option]
-        # Create mode with library default SOC values
-        # time_of_use and self_consumption default to 20%, emergency_backup to 100%
-        mode = mode_constructor()
+
+        # Every mode change sends a reserve, so send the one this mode already has
+        # on the gateway. Calling the constructor bare sends the library default
+        # (20%, or 100% for backup) and silently overwrites the reserve the user set
+        # in the FranklinWH app — issue #18. If the reserve can't be read, don't
+        # switch at all rather than switch with a guessed reserve.
+        try:
+            reserve = await self.coordinator.async_get_mode_reserve(option)
+        except Exception as err:
+            _LOGGER.error("Could not read the reserve for %s: %s", option, err)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="reserve_unreadable",
+                translation_placeholders={"mode": MODES[option]},
+            ) from err
+
+        if reserve is None:
+            # The gateway has no profile for this mode yet, so there is no
+            # reserve to keep; the library default is what the app would use.
+            _LOGGER.warning(
+                "No existing reserve found for %s; using the library default", option
+            )
+            mode = mode_constructor()
+        else:
+            mode = mode_constructor(reserve)
 
         try:
             await self.coordinator.async_set_mode(mode)
