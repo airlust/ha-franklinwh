@@ -29,7 +29,7 @@
           "time_of_use": "Time of Use",
           "self_consumption": "Self Consumption",
           "emergency_backup": "Backup",
-          "smart_energy_dispatch": "Smart Energy Dispatch"
+          "smart_energy_dispatch": "Energy Optimizer"
         }
       }
     }

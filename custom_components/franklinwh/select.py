@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Map our mode keys to the Mode class constructors.
 #
-# Smart Energy Dispatch is deliberately absent: the franklinwh library's Mode
+# Energy Optimizer is deliberately absent: the franklinwh library's Mode
 # class provides no constructor for it, so the integration can report the mode
 # but not select it. It has to be set in the FranklinWH app.
 MODE_MAP = {

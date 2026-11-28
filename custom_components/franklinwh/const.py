@@ -22,9 +22,12 @@ ATTR_GRID_STATUS: Final = "grid_status"
 MODE_TIME_OF_USE: Final = "time_of_use"
 MODE_SELF_CONSUMPTION: Final = "self_consumption"
 MODE_BACKUP: Final = "emergency_backup"
-# Smart Energy Dispatch is the AI-assisted mode added by the FranklinWH app in
-# mid-2026. It has no counterpart in the franklinwh library's Mode class, so it
-# can be read but not set; see select.py.
+# Energy Optimizer is the AI-assisted mode added by the FranklinWH app in
+# mid-2026, which first called it Smart Energy Dispatch. The key keeps that name
+# because it is the select entity's state, and automations compare against it.
+# The gateway itself still reports the mode as "Smart Energy Dispatch". It has no
+# counterpart in the franklinwh library's Mode class, so it can be read but not
+# set; see select.py.
 MODE_SMART_ENERGY_DISPATCH: Final = "smart_energy_dispatch"
 
 # The keys are the select entity's options and what lands in the state machine.
@@ -35,7 +38,7 @@ MODES: Final = {
     MODE_TIME_OF_USE: "Time of Use",
     MODE_SELF_CONSUMPTION: "Self Consumption",
     MODE_BACKUP: "Backup",
-    MODE_SMART_ENERGY_DISPATCH: "Smart Energy Dispatch",
+    MODE_SMART_ENERGY_DISPATCH: "Energy Optimizer",
 }
 
 # workMode is the gateway's stable mode enum. Unlike the TOU profile ids (which

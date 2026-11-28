@@ -319,9 +319,13 @@ not match a profile id, `runingMode` reads the same value in every mode — so
 caching "what that value means" pins the display to whichever mode happened to be
 active when the cache was filled.
 
-### Smart Energy Dispatch
+### Energy Optimizer
 
-`workMode` 7 is the AI-assisted mode the FranklinWH app added in mid-2026. It is
+`workMode` 7 is the AI-assisted mode the FranklinWH app added in mid-2026, first
+named Smart Energy Dispatch. The app now calls it Energy Optimizer, and so does
+the UI here, but the option key stays `smart_energy_dispatch`: it is the select
+entity's state, so renaming it would break automations. The gateway still
+reports the old name over the API. It is
 read-only here: the `franklinwh` library's `Mode` class has no constructor for it,
 so selecting it in Home Assistant raises an error directing the user to the app.
 Note that one observed aHub reports a `runingMode` for this mode that matches
@@ -417,7 +421,7 @@ Rule: If library method is "async def" → use "await"
 │                                                                 │
 │  Options come from MODES, which must contain every mode the      │
 │  gateway can report: HA renders a current_option outside         │
-│  options as "unknown". Smart Energy Dispatch is therefore        │
+│  options as "unknown". Energy Optimizer is therefore             │
 │  listed but not settable — selecting it raises an error          │
 │  pointing at the FranklinWH app.                                │
 │                                                                 │
