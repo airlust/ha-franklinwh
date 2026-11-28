@@ -330,7 +330,7 @@ class FranklinWHCoordinator(DataUpdateCoordinator[Stats]):
             return None
 
         # runingMode is the active profile's id on most gateways, but not all: an
-        # aHub running Smart Energy Dispatch reports a runingMode that matches none
+        # aHub running Energy Optimizer reports a runingMode that matches none
         # of its profile ids. currendId is the gateway's own statement of what's
         # active, so it settles the cases where runingMode doesn't match.
         active_id = raw_mode if raw_mode in profiles else result.get("currendId")
